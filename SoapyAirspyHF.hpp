@@ -36,9 +36,12 @@
 #include <string>
 #include <cstring>
 #include <algorithm>
-#include <atomic>
+
 
 #include <libairspyhf/airspyhf.h>
+
+// It's easy to grep for variables when marked with this macro.
+#define UNUSED(x) (void)(x)
 
 #define DEFAULT_BUFFER_BYTES 262144
 #define DEFAULT_NUM_BUFFERS 8
@@ -92,33 +95,12 @@ public:
 
     int deactivateStream(SoapySDR::Stream *stream, const int flags = 0, const long long timeNs = 0);
 
-    int readStream(
-            SoapySDR::Stream *stream,
-            void * const *buffs,
-            const size_t numElems,
-            int &flags,
-            long long &timeNs,
-            const long timeoutUs = 100000);
-
-    /*******************************************************************
-     * Direct buffer access API
-     ******************************************************************/
-
-    size_t getNumDirectAccessBuffers(SoapySDR::Stream *stream);
-
-    int getDirectAccessBufferAddrs(SoapySDR::Stream *stream, const size_t handle, void **buffs);
-
-    int acquireReadBuffer(
-        SoapySDR::Stream *stream,
-        size_t &handle,
-        const void **buffs,
-        int &flags,
-        long long &timeNs,
-        const long timeoutUs = 100000);
-
-    void releaseReadBuffer(
-        SoapySDR::Stream *stream,
-        const size_t handle);
+    int readStream(SoapySDR::Stream *stream,
+                   void * const *buffs,
+                   const size_t numElems,
+                   int &flags,
+                   long long &timeNs,
+                   const long timeoutUs = 100000);
 
     /*******************************************************************
      * Antenna API
@@ -160,12 +142,11 @@ public:
      * Frequency API
      ******************************************************************/
 
-    void setFrequency(
-            const int direction,
-            const size_t channel,
-            const std::string &name,
-            const double frequency,
-            const SoapySDR::Kwargs &args = SoapySDR::Kwargs());
+    void setFrequency(const int direction,
+                      const size_t channel,
+                      const std::string &name,
+                      const double frequency,
+                      const SoapySDR::Kwargs &args = SoapySDR::Kwargs());
 
     double getFrequency(const int direction, const size_t channel, const std::string &name) const;
 
@@ -208,37 +189,25 @@ public:
 private:
 
     //device handle
-    uint64_t serial;
-    airspyhf_device_t *dev;
+    uint64_t serial_;
+    airspyhf_device_t *dev_;
 
-    //cached settings
-    bool hasgains;
-    uint32_t sampleRate, centerFrequency;
-    unsigned int bufferLength;
-    size_t numBuffers;
-    bool streamActive, rfBias, bitPack;
-    uint8_t lnaGain,rfGain, agcMode;
-    std::atomic_bool sampleRateChanged;
-    int bytesPerSample;
-    //uint8_t lnaGain, mixerGain, vgaGain;
-    SoapySDR::ConverterRegistry::ConverterFunction converterFunction;
-    
+    uint32_t sampleRate_;
+    uint32_t centerFrequency_;
+
+    bool   agcEnabled_;
+    double lnaGain_;
+    double hfAttenuation_;
+
+    void* bufferPtr_;
+    std::mutex bufferLock_;
+    std::condition_variable bufferReady_;
+    std::condition_variable callbackDone_;
+
+    SoapySDR::ConverterRegistry::ConverterFunction converterFunction_;
+
 public:
-    //async api usage
+    // libairspyhf callback endpoint
     int rx_callback(airspyhf_transfer_t *t);
 
-    mutable std::mutex _general_state_mutex;
-
-    std::mutex _buf_mutex;
-    std::condition_variable _buf_cond;
-
-    std::vector<std::vector<char> > _buffs;
-    size_t	_buf_head;
-    size_t	_buf_tail;
-    std::atomic<size_t>	_buf_count;
-    char *_currentBuff;
-    std::atomic<bool> _overflowEvent;
-    size_t bufferedElems;
-    size_t _currentHandle;
-    bool resetBuffer;
 };

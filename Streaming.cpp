@@ -30,14 +30,17 @@
 #include <algorithm> //min
 #include <climits> //SHRT_MAX
 #include <cstring> // memcpy
+#include <chrono>
+
 
 #define SOAPY_NATIVE_FORMAT SOAPY_SDR_CF32
 
 std::vector<std::string> SoapyAirspyHF::getStreamFormats(const int direction, const size_t channel) const {
     std::vector<std::string> formats;
 
-    for (const auto &target : SoapySDR::ConverterRegistry::listTargetFormats(SOAPY_NATIVE_FORMAT))
-    {
+    UNUSED(direction);
+
+    for (const auto &target : SoapySDR::ConverterRegistry::listTargetFormats(SOAPY_NATIVE_FORMAT)) {
         formats.push_back(target);
     }
 
@@ -45,13 +48,16 @@ std::vector<std::string> SoapyAirspyHF::getStreamFormats(const int direction, co
 }
 
 std::string SoapyAirspyHF::getNativeStreamFormat(const int direction, const size_t channel, double &fullScale) const {
-     fullScale = 1.0;
-     return SOAPY_NATIVE_FORMAT;
+    UNUSED(direction);
+
+    fullScale = 1.0;
+    return SOAPY_NATIVE_FORMAT;
 }
 
 SoapySDR::ArgInfoList SoapyAirspyHF::getStreamArgsInfo(const int direction, const size_t channel) const {
     SoapySDR::ArgInfoList streamArgs;
 
+    // TODO
     // SoapySDR::ArgInfo chanArg;
     // chanArg.key = "chan";
     // chanArg.value = "mono_l";
@@ -75,50 +81,56 @@ SoapySDR::ArgInfoList SoapyAirspyHF::getStreamArgsInfo(const int direction, cons
     return streamArgs;
 }
 
-/*******************************************************************
+/****************************************g***************************
  * Async thread work
  ******************************************************************/
 
-static int _rx_callback(airspyhf_transfer_t *t)
+// Static trampoline for libairspyhf callback
+static int _rx_callback(airspyhf_transfer_t *transfer)
 {
-    //printf("_rx_callback\n");
-    SoapyAirspyHF *self = (SoapyAirspyHF *)t->ctx;
-    return self->rx_callback(t);
+    SoapyAirspyHF *self = (SoapyAirspyHF *)transfer->ctx;
+    return self->rx_callback(transfer);
 }
 
-int SoapyAirspyHF::rx_callback(airspyhf_transfer_t *t)
+int SoapyAirspyHF::rx_callback(airspyhf_transfer_t *transfer)
 {
-    if (sampleRateChanged.load()) {
-        return 1;
+
+    // Wait for a buffer to become ready
+    std::unique_lock<std::mutex> lock(bufferLock_);
+
+    // TODO: maybe timeout here?
+    auto const timeout = std::chrono::milliseconds(1000);
+    const bool wait_ret = bufferReady_.wait_for(lock, timeout, [&] {
+        return bufferPtr_ != nullptr ||
+            !airspyhf_is_streaming(dev_);
+    });
+
+    // Did we time out?
+    if(wait_ret == false) {
+        SoapySDR::logf(SOAPY_SDR_ERROR, "rx_callback: timeout waiting for buffer.");
+        return -1;
     }
 
-    //printf("_rx_callback %d _buf_head=%d, numBuffers=%d\n", len, _buf_head, _buf_tail);
-    //overflow condition: the caller is not reading fast enough
-    if (_buf_count == numBuffers)
-    {
-        _overflowEvent = true;
-        return 0;
+    // If not streaming, we are done.
+    if(!airspyhf_is_streaming(dev_)) {
+        SoapySDR_logf(SOAPY_SDR_DEBUG, "rx_callback: not streaming");
+        return -1;
     }
 
-    //copy into the buffer queue
-    auto &buff = _buffs[_buf_tail];
-    buff.resize(t->sample_count * bytesPerSample);
-    std::memcpy(buff.data(), t->samples, t->sample_count * bytesPerSample);
-
-    //increment the tail pointer
-    _buf_tail = (_buf_tail + 1) % numBuffers;
-
-    //increment buffers available under lock
-    //to avoid race in acquireReadBuffer wait
-    {
-        std::lock_guard<std::mutex> lock(_buf_mutex);
-        _buf_count++;
+    // Print a warning if we have dropped samples.
+    if(transfer->dropped_samples > 0) {
+        SoapySDR::logf(SOAPY_SDR_WARNING, "Dropped %d samples",
+                       transfer->dropped_samples);
     }
 
-    //notify readStream()
-    _buf_cond.notify_one();
+    // Convert the samples directly into the buffer.
+    converterFunction_(transfer->samples, bufferPtr_, transfer->sample_count, 1.0);
 
-    return 0;
+    // Ok we are done, invalidate the buffer pointer and notify
+    bufferPtr_ = nullptr;
+    callbackDone_.notify_one();
+
+    return 0; // anything else is an error.
 }
 
 /*******************************************************************
@@ -131,6 +143,8 @@ SoapySDR::Stream *SoapyAirspyHF::setupStream(
         const std::vector<size_t> &channels,
         const SoapySDR::Kwargs &args)
 {
+    UNUSED(direction);
+
     //check the channel configuration
     if (channels.size() > 1 or (channels.size() > 0 and channels.at(0) != 0)) {
         throw std::runtime_error("setupStream invalid channel selection");
@@ -143,38 +157,22 @@ SoapySDR::Stream *SoapyAirspyHF::setupStream(
                 "setupStream invalid format '" + format + "'.");
     }
 
-    converterFunction = SoapySDR::ConverterRegistry::getFunction(SOAPY_NATIVE_FORMAT, format, SoapySDR::ConverterRegistry::GENERIC);
+    // Find converter functinon
+    converterFunction_ = SoapySDR::ConverterRegistry::getFunction(SOAPY_NATIVE_FORMAT, format, SoapySDR::ConverterRegistry::GENERIC);
 
-    sampleRateChanged.store(true);
+    SoapySDR::logf(SOAPY_SDR_INFO, "setupStream: format=%s", format.c_str());
 
-    bytesPerSample = SoapySDR::formatToSize(SOAPY_NATIVE_FORMAT);
-
-    //We get this many complex samples over the bus.
-    //Its the same for both complex float and int16.
-    //TODO adjust when packing is enabled
-    bufferLength = DEFAULT_BUFFER_BYTES/4;
-
-    //clear async fifo counts
-    _buf_tail = 0;
-    _buf_count = 0;
-    _buf_head = 0;
-
-    //allocate buffers
-    _buffs.resize(numBuffers);
-    for (auto &buff : _buffs) buff.reserve(bufferLength*bytesPerSample);
-    for (auto &buff : _buffs) buff.resize(bufferLength*bytesPerSample);
-
-    return (SoapySDR::Stream *) this;
+    return (SoapySDR::Stream*) this;
 }
 
 void SoapyAirspyHF::closeStream(SoapySDR::Stream *stream)
 {
-    _buffs.clear();
+    UNUSED(stream);
 }
 
-size_t SoapyAirspyHF::getStreamMTU(SoapySDR::Stream *stream) const
-{
-    return bufferLength;
+size_t SoapyAirspyHF::getStreamMTU(SoapySDR::Stream *stream) const {
+    // This value is a constant in the driver
+    return airspyhf_get_output_size(dev_);
 }
 
 int SoapyAirspyHF::activateStream(
@@ -183,147 +181,86 @@ int SoapyAirspyHF::activateStream(
         const long long timeNs,
         const size_t numElems)
 {
-    if (flags != 0) {
-        return SOAPY_SDR_NOT_SUPPORTED;
-    }
-    
-    resetBuffer = true;
-    bufferedElems = 0;
+    int ret;
+    // No flags supported
+    if (flags != 0) { return SOAPY_SDR_NOT_SUPPORTED; }
+    // Start the stream
+    ret = airspyhf_start(dev_, &_rx_callback, (void *)this);
 
-    std::lock_guard <std::mutex> lock(_general_state_mutex);
-    
-    if (sampleRateChanged.load()) {
-        airspyhf_set_samplerate(dev, sampleRate);
-        sampleRateChanged.store(false);
+    if (ret != AIRSPYHF_SUCCESS) {
+        return SOAPY_SDR_STREAM_ERROR;
     }
-    airspyhf_start(dev, &_rx_callback, (void *) this);
-    
+
+    SoapySDR::logf(SOAPY_SDR_DEBUG, "activateStream: flags=%d, timeNs=%lld, numElems=%d", flags, timeNs, numElems);
+
     return 0;
 }
 
 int SoapyAirspyHF::deactivateStream(SoapySDR::Stream *stream, const int flags, const long long timeNs)
 {
-    if (flags != 0) return SOAPY_SDR_NOT_SUPPORTED;
+    int ret;
+    // No flags supported
+    if (flags != 0) { return SOAPY_SDR_NOT_SUPPORTED; }
 
-    std::lock_guard <std::mutex> lock(_general_state_mutex);
+    // Stop streaming
+    ret = airspyhf_stop(dev_);
 
-    airspyhf_stop(dev);
-    
-    streamActive = false;
-    
+    if (ret != AIRSPYHF_SUCCESS) {
+        return SOAPY_SDR_STREAM_ERROR;
+    }
+
+    // Don't hang in callback
+    bufferReady_.notify_one();
+    callbackDone_.notify_one();
+
     return 0;
 }
 
-int SoapyAirspyHF::readStream(
-        SoapySDR::Stream *stream,
-        void * const *buffs,
-        const size_t numElems,
-        int &flags,
-        long long &timeNs,
-        const long timeoutUs)
-{
-    {
-        std::lock_guard <std::mutex> lock(_general_state_mutex);
+int SoapyAirspyHF::readStream(SoapySDR::Stream *stream,
+                              void * const *buffs,
+                              const size_t numElems,
+                              int &flags,
+                              long long &timeNs,
+                              const long timeoutUs) {
 
-        if (sampleRateChanged.load()) {
-            airspyhf_stop(dev);
-            airspyhf_set_samplerate(dev, sampleRate);
-            airspyhf_start(dev, &_rx_callback, (void *) this);
-            sampleRateChanged.store(false);
-        }
+    if(flags != 0) { return SOAPY_SDR_NOT_SUPPORTED; }
+
+    // We needs at least this many elements
+    if(numElems < getStreamMTU(stream)) {
+        SoapySDR_logf(SOAPY_SDR_WARNING, "readStream numElems=%d < MTU=%d",
+                      numElems, getStreamMTU(stream));
+        return 0;
     }
 
-    //this is the user's buffer for channel 0
-    void *buff0 = buffs[0];
+    std::unique_lock<std::mutex> lock(bufferLock_);
+    // Store pointer to buffer
+    bufferPtr_ = buffs[0];
+    // We are ready for the callback to fill the buffer
+    bufferReady_.notify_one();
 
-    //are elements left in the buffer? if not, do a new read.
-    if (bufferedElems == 0)
-    {
-        int ret = this->acquireReadBuffer(stream, _currentHandle, (const void **)&_currentBuff, flags, timeNs, timeoutUs);
-        if (ret < 0) return ret;
-        bufferedElems = ret;
+    // The callback will set this pointer to nullptr when it is done.
+    const auto timeout = std::chrono::microseconds(timeoutUs);
+    const bool wait_ret = callbackDone_.wait_for(lock, timeout, [&] {
+        return bufferPtr_ == nullptr ||    // Callback is done
+            !airspyhf_is_streaming(dev_); // We are not streaming anymore
+    });
+
+    // Did we time out?
+    if(wait_ret == false) {
+        SoapySDR::logf(SOAPY_SDR_ERROR, "readStream: timeout waiting for callback.");
+        return SOAPY_SDR_TIMEOUT;
     }
 
-    size_t returnedElems = std::min(bufferedElems, numElems);
-
-    //convert into user's buff0
-    converterFunction(_currentBuff, buff0, returnedElems, 1);
-
-    //bump variables for next call into readStream
-    bufferedElems -= returnedElems;
-    _currentBuff += returnedElems * bytesPerSample;
-
-    //return number of elements written to buff0
-    if (bufferedElems != 0) flags |= SOAPY_SDR_MORE_FRAGMENTS;
-    else this->releaseReadBuffer(stream, _currentHandle);
-    return returnedElems;
-}
-
-/*******************************************************************
- * Direct buffer access API
- ******************************************************************/
-
-size_t SoapyAirspyHF::getNumDirectAccessBuffers(SoapySDR::Stream *stream)
-{
-    return _buffs.size();
-}
-
-int SoapyAirspyHF::getDirectAccessBufferAddrs(SoapySDR::Stream *stream, const size_t handle, void **buffs)
-{
-    buffs[0] = (void *)_buffs[handle].data();
-    return 0;
-}
-
-int SoapyAirspyHF::acquireReadBuffer(
-    SoapySDR::Stream *stream,
-    size_t &handle,
-    const void **buffs,
-    int &flags,
-    long long &timeNs,
-    const long timeoutUs)
-{
-    //reset is issued by various settings
-    //to drain old data out of the queue
-    if (resetBuffer)
-    {
-        //drain all buffers from the fifo
-        _buf_head = (_buf_head + _buf_count.exchange(0)) % numBuffers;
-        resetBuffer = false;
-        _overflowEvent = false;
+    // Check condiation, if we are not streaming anymore, we are done.
+    // Otherwise, it means data was written to the buffer.
+    if (!airspyhf_is_streaming(dev_)) {
+        SoapySDR_logf(SOAPY_SDR_DEBUG, "readStream: not streaming");
+        // TODO.
+        return SOAPY_SDR_STREAM_ERROR;
     }
 
-    //handle overflow from the rx callback thread
-    if (_overflowEvent)
-    {
-        //drain the old buffers from the fifo
-        _buf_head = (_buf_head + _buf_count.exchange(0)) % numBuffers;
-        _overflowEvent = false;
-        SoapySDR::log(SOAPY_SDR_SSI, "O");
-        return SOAPY_SDR_OVERFLOW;
-    }
+    // SoapySDR_logf(SOAPY_SDR_DEBUG, "readStream: %d", numElems);
 
-    //wait for a buffer to become available
-    if (_buf_count == 0)
-    {
-        std::unique_lock <std::mutex> lock(_buf_mutex);
-        _buf_cond.wait_for(lock, std::chrono::microseconds(timeoutUs), [this]{return _buf_count != 0;});
-        if (_buf_count == 0) return SOAPY_SDR_TIMEOUT;
-    }
-
-    //extract handle and buffer
-    handle = _buf_head;
-    _buf_head = (_buf_head + 1) % numBuffers;
-    buffs[0] = (void *)_buffs[handle].data();
-    flags = 0;
-
-    //return number available
-    return _buffs[handle].size() / bytesPerSample;
-}
-
-void SoapyAirspyHF::releaseReadBuffer(
-    SoapySDR::Stream *stream,
-    const size_t handle)
-{
-    //TODO this wont handle out of order releases
-    _buf_count--;
+    // Only work with the fastest block size
+    return getStreamMTU(stream);
 }

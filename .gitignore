@@ -1,1 +1,4 @@
 build/
+.cache/
+.projectile
+compile_commands.json

@@ -31,12 +31,12 @@
 static std::vector<SoapySDR::Kwargs> findAirspyHF(const SoapySDR::Kwargs &args)
 {
     std::vector<SoapySDR::Kwargs> results;
-    
+
     airspyhf_lib_version_t asVersion;
     airspyhf_lib_version(&asVersion);
-    
+
     // SoapySDR_setLogLevel(SOAPY_SDR_DEBUG);
-    
+
     SoapySDR_logf(SOAPY_SDR_DEBUG, "AirSpyHF Lib v%d.%d rev %d", asVersion.major_version, asVersion.minor_version, asVersion.revision);
 
     uint64_t serials[MAX_DEVICES];
@@ -47,14 +47,14 @@ static std::vector<SoapySDR::Kwargs> findAirspyHF(const SoapySDR::Kwargs &args)
     }
 
     SoapySDR_logf(SOAPY_SDR_DEBUG, "%d AirSpy boards found.", count);
-    
+
     for (int i = 0; i < count; i++) {
         std::stringstream serialstr;
-        
+
         serialstr.str("");
         serialstr << std::hex << serials[i];
-        
-        SoapySDR_logf(SOAPY_SDR_DEBUG, "Serial %s", serialstr.str().c_str());        
+
+        SoapySDR_logf(SOAPY_SDR_DEBUG, "Serial %s", serialstr.str().c_str());
 
         SoapySDR::Kwargs soapyInfo;
 
