@@ -81,7 +81,7 @@ SoapySDR::ArgInfoList SoapyAirspyHF::getStreamArgsInfo(const int direction, cons
     return streamArgs;
 }
 
-/****************************************g***************************
+/*******************************************************************
  * Async thread work
  ******************************************************************/
 
@@ -95,40 +95,24 @@ static int _rx_callback(airspyhf_transfer_t *transfer)
 int SoapyAirspyHF::rx_callback(airspyhf_transfer_t *transfer)
 {
 
-    // Wait for a buffer to become ready
-    std::unique_lock<std::mutex> lock(bufferLock_);
+    const uint32_t timeout_us = 500000;
 
-    // TODO: maybe timeout here?
-    auto const timeout = std::chrono::milliseconds(1000);
-    const bool wait_ret = bufferReady_.wait_for(lock, timeout, [&] {
-        return bufferPtr_ != nullptr ||
-            !airspyhf_is_streaming(dev_);
-    });
+    const auto written = ringbuffer_.write_at_least<airspyhf_complex_float_t>
+        (transfer->sample_count,
+         std::chrono::microseconds(timeout_us),
+         [&](airspyhf_complex_float_t* begin, [[maybe_unused]] const uint32_t available) {
+             // Copy samples to ringbufer
+             std::copy(transfer->samples,
+                       transfer->samples + transfer->sample_count,
+                       begin);
 
-    // Did we time out?
-    if(wait_ret == false) {
-        SoapySDR::logf(SOAPY_SDR_ERROR, "rx_callback: timeout waiting for buffer.");
-        return -1;
+             return transfer->sample_count;
+         });
+
+    if(written < 0) {
+        SoapySDR::logf(SOAPY_SDR_INFO, "SoapyAirspyHF::rx_callback: ringbuffer write timeout");
+        return 0;
     }
-
-    // If not streaming, we are done.
-    if(!airspyhf_is_streaming(dev_)) {
-        SoapySDR_logf(SOAPY_SDR_DEBUG, "rx_callback: not streaming");
-        return -1;
-    }
-
-    // Print a warning if we have dropped samples.
-    if(transfer->dropped_samples > 0) {
-        SoapySDR::logf(SOAPY_SDR_WARNING, "Dropped %d samples",
-                       transfer->dropped_samples);
-    }
-
-    // Convert the samples directly into the buffer.
-    converterFunction_(transfer->samples, bufferPtr_, transfer->sample_count, 1.0);
-
-    // Ok we are done, invalidate the buffer pointer and notify
-    bufferPtr_ = nullptr;
-    callbackDone_.notify_one();
 
     return 0; // anything else is an error.
 }
@@ -184,6 +168,10 @@ int SoapyAirspyHF::activateStream(
     int ret;
     // No flags supported
     if (flags != 0) { return SOAPY_SDR_NOT_SUPPORTED; }
+
+    // Clear ringbuffer
+    ringbuffer_.clear();
+
     // Start the stream
     ret = airspyhf_start(dev_, &_rx_callback, (void *)this);
 
@@ -199,6 +187,10 @@ int SoapyAirspyHF::activateStream(
 int SoapyAirspyHF::deactivateStream(SoapySDR::Stream *stream, const int flags, const long long timeNs)
 {
     int ret;
+
+    SoapySDR::logf(SOAPY_SDR_DEBUG, "deactivateStream: flags=%d, timeNs=%lld", flags, timeNs);
+
+
     // No flags supported
     if (flags != 0) { return SOAPY_SDR_NOT_SUPPORTED; }
 
@@ -225,42 +217,28 @@ int SoapyAirspyHF::readStream(SoapySDR::Stream *stream,
 
     if(flags != 0) { return SOAPY_SDR_NOT_SUPPORTED; }
 
-    // We needs at least this many elements
-    if(numElems < getStreamMTU(stream)) {
-        SoapySDR_logf(SOAPY_SDR_WARNING, "readStream numElems=%d < MTU=%d",
-                      numElems, getStreamMTU(stream));
-        return 0;
-    }
+    const auto to_convert = std::min(numElems, getStreamMTU(stream));
 
-    std::unique_lock<std::mutex> lock(bufferLock_);
-    // Store pointer to buffer
-    bufferPtr_ = buffs[0];
-    // We are ready for the callback to fill the buffer
-    bufferReady_.notify_one();
+    // SoapySDR::logf(SOAPY_SDR_DEBUG, "readStream: numElems=%d, timeoutUs=%ld, topcopy=%ld", numElems, timeoutUs, to_copy);
 
-    // The callback will set this pointer to nullptr when it is done.
-    const auto timeout = std::chrono::microseconds(timeoutUs);
-    const bool wait_ret = callbackDone_.wait_for(lock, timeout, [&] {
-        return bufferPtr_ == nullptr ||    // Callback is done
-            !airspyhf_is_streaming(dev_); // We are not streaming anymore
-    });
+    const auto converted = ringbuffer_.read_at_least<airspyhf_complex_float_t>
+        (to_convert,
+         std::chrono::microseconds(timeoutUs),
+         [&](const airspyhf_complex_float_t* begin, [[maybe_unused]] const uint32_t available) {
+             // Convert samples to output buffer
+             converterFunction_(begin,
+                                buffs[0],
+                                to_convert,
+                                1.0);
 
-    // Did we time out?
-    if(wait_ret == false) {
-        SoapySDR::logf(SOAPY_SDR_ERROR, "readStream: timeout waiting for callback.");
+             // Consume from ringbuffer
+             return to_convert;
+         });
+
+    if(converted < 0) {
+        SoapySDR::logf(SOAPY_SDR_DEBUG, "readStream: ringbuffer read timeout");
         return SOAPY_SDR_TIMEOUT;
     }
 
-    // Check condiation, if we are not streaming anymore, we are done.
-    // Otherwise, it means data was written to the buffer.
-    if (!airspyhf_is_streaming(dev_)) {
-        SoapySDR_logf(SOAPY_SDR_DEBUG, "readStream: not streaming");
-        // TODO.
-        return SOAPY_SDR_STREAM_ERROR;
-    }
-
-    // SoapySDR_logf(SOAPY_SDR_DEBUG, "readStream: %d", numElems);
-
-    // Only work with the fastest block size
-    return getStreamMTU(stream);
+    return converted;
 }

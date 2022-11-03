@@ -43,8 +43,11 @@
 // It's easy to grep for variables when marked with this macro.
 #define UNUSED(x) (void)(x)
 
-#define DEFAULT_BUFFER_BYTES 262144
-#define DEFAULT_NUM_BUFFERS 8
+#include "RingBuffer.hpp"
+
+//#define DEFAULT_BUFFER_BYTES 262144
+//#define DEFAULT_NUM_BUFFERS 8
+
 #define MAX_DEVICES 32
 
 class SoapyAirspyHF: public SoapySDR::Device
@@ -205,6 +208,8 @@ private:
     std::condition_variable callbackDone_;
 
     SoapySDR::ConverterRegistry::ConverterFunction converterFunction_;
+
+    RingBuffer ringbuffer_;
 
 public:
     // libairspyhf callback endpoint

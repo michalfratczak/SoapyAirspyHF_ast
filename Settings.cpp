@@ -28,7 +28,8 @@
 
 
 SoapyAirspyHF::SoapyAirspyHF(const SoapySDR::Kwargs &args)
-    : dev_(nullptr)
+    : dev_(nullptr),
+      ringbuffer_(17)
 {
     int ret;
 
@@ -195,7 +196,8 @@ void SoapyAirspyHF::setGainMode(const int direction, const size_t channel, const
     }
 
     if(agcEnabled_ != automatic) {
-        int ret = airspyhf_set_hf_att(dev_, automatic);
+        SoapySDR::logf(SOAPY_SDR_INFO, "setGainMode(%d, %d, %d)", direction, channel, automatic);
+        int ret = airspyhf_set_hf_agc(dev_, automatic);
         if(ret != AIRSPYHF_SUCCESS) {
             SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_hf_att() failed: %d", ret);
         } else {
@@ -262,7 +264,9 @@ void SoapyAirspyHF::setGain(const int direction, const size_t channel, const std
         }
     }
     else if (name == "HF ATT") {
-        int ret = airspyhf_set_hf_att(dev_, static_cast<uint8_t>(value));
+        const uint8_t att = static_cast<uint8_t>(std::round(value / 6));
+        SoapySDR_logf(SOAPY_SDR_INFO, "set hf att %d", att);
+        int ret = airspyhf_set_hf_att(dev_, att);
         if(ret != AIRSPYHF_SUCCESS) {
             SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_hf_att() failed: %d", ret);
         } else {
