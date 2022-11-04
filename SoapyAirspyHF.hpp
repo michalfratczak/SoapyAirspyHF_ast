@@ -45,9 +45,6 @@
 
 #include "RingBuffer.hpp"
 
-//#define DEFAULT_BUFFER_BYTES 262144
-//#define DEFAULT_NUM_BUFFERS 8
-
 #define MAX_DEVICES 32
 
 class SoapyAirspyHF: public SoapySDR::Device
@@ -191,7 +188,7 @@ public:
 
 private:
 
-    //device handle
+    // Device handle
     uint64_t serial_;
     airspyhf_device_t *dev_;
 
@@ -202,14 +199,9 @@ private:
     double lnaGain_;
     double hfAttenuation_;
 
-    void* bufferPtr_;
-    std::mutex bufferLock_;
-    std::condition_variable bufferReady_;
-    std::condition_variable callbackDone_;
-
     SoapySDR::ConverterRegistry::ConverterFunction converterFunction_;
 
-    RingBuffer ringbuffer_;
+    RingBuffer<airspyhf_complex_float_t> ringbuffer_;
 
 public:
     // libairspyhf callback endpoint

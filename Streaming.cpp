@@ -35,6 +35,7 @@
 
 #define SOAPY_NATIVE_FORMAT SOAPY_SDR_CF32
 
+
 std::vector<std::string> SoapyAirspyHF::getStreamFormats(const int direction, const size_t channel) const {
     std::vector<std::string> formats;
 
@@ -86,7 +87,7 @@ SoapySDR::ArgInfoList SoapyAirspyHF::getStreamArgsInfo(const int direction, cons
  ******************************************************************/
 
 // Static trampoline for libairspyhf callback
-static int _rx_callback(airspyhf_transfer_t *transfer)
+static int rx_callback_(airspyhf_transfer_t *transfer)
 {
     SoapyAirspyHF *self = (SoapyAirspyHF *)transfer->ctx;
     return self->rx_callback(transfer);
@@ -97,7 +98,7 @@ int SoapyAirspyHF::rx_callback(airspyhf_transfer_t *transfer)
 
     const uint32_t timeout_us = 500000;
 
-    const auto written = ringbuffer_.write_at_least<airspyhf_complex_float_t>
+    const auto written = ringbuffer_.write_at_least
         (transfer->sample_count,
          std::chrono::microseconds(timeout_us),
          [&](airspyhf_complex_float_t* begin, [[maybe_unused]] const uint32_t available) {
@@ -159,11 +160,10 @@ size_t SoapyAirspyHF::getStreamMTU(SoapySDR::Stream *stream) const {
     return airspyhf_get_output_size(dev_);
 }
 
-int SoapyAirspyHF::activateStream(
-        SoapySDR::Stream *stream,
-        const int flags,
-        const long long timeNs,
-        const size_t numElems)
+int SoapyAirspyHF::activateStream(SoapySDR::Stream *stream,
+                                  const int flags,
+                                  const long long timeNs,
+                                  const size_t numElems)
 {
     int ret;
     // No flags supported
@@ -173,7 +173,7 @@ int SoapyAirspyHF::activateStream(
     ringbuffer_.clear();
 
     // Start the stream
-    ret = airspyhf_start(dev_, &_rx_callback, (void *)this);
+    ret = airspyhf_start(dev_, &rx_callback_, (void *)this);
 
     if (ret != AIRSPYHF_SUCCESS) {
         return SOAPY_SDR_STREAM_ERROR;
@@ -201,10 +201,6 @@ int SoapyAirspyHF::deactivateStream(SoapySDR::Stream *stream, const int flags, c
         return SOAPY_SDR_STREAM_ERROR;
     }
 
-    // Don't hang in callback
-    bufferReady_.notify_one();
-    callbackDone_.notify_one();
-
     return 0;
 }
 
@@ -221,7 +217,7 @@ int SoapyAirspyHF::readStream(SoapySDR::Stream *stream,
 
     // SoapySDR::logf(SOAPY_SDR_DEBUG, "readStream: numElems=%d, timeoutUs=%ld, topcopy=%ld", numElems, timeoutUs, to_copy);
 
-    const auto converted = ringbuffer_.read_at_least<airspyhf_complex_float_t>
+    const auto converted = ringbuffer_.read_at_least
         (to_convert,
          std::chrono::microseconds(timeoutUs),
          [&](const airspyhf_complex_float_t* begin, [[maybe_unused]] const uint32_t available) {

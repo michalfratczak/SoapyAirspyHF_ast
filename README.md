@@ -28,4 +28,3 @@ children of Ukraine who have lost their homes because of the war.
 
 Turning AGC on/off, LNA and RF gain settings requires firmware R1.3 or later
 and airspyhf 1.1.2 or later.
-4

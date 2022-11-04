@@ -29,8 +29,8 @@
 
 SoapyAirspyHF::SoapyAirspyHF(const SoapySDR::Kwargs &args)
     : dev_(nullptr),
-      ringbuffer_(17)
-{
+      ringbuffer_(8 * 2048) {
+
     int ret;
 
     SoapySDR_setLogLevel(SoapySDR::LogLevel::SOAPY_SDR_DEBUG);

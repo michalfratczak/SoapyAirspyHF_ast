@@ -50,10 +50,11 @@ list(APPEND AIRSPYHF_LIBS ${LIBAIRSPYHF_LIBRARIES})
 SOAPY_SDR_MODULE_UTIL(
     TARGET airspyhfSupport
     SOURCES
-    	SoapyAirspyHF.hpp
+        SoapyAirspyHF.hpp
         Registration.cpp
         Settings.cpp
         Streaming.cpp
+        RingBuffer.hpp
     LIBRARIES
     ${AIRSPYHF_LIBS}
 )
@@ -67,4 +68,3 @@ configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
     IMMEDIATE @ONLY)
-
