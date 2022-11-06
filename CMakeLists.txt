@@ -37,6 +37,9 @@ if (APPLE)
    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wc++11-extensions")
 endif(APPLE)
 
+# Extra flags
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-parameter -Wstrict-aliasing")
+
 # IF (APPLE)
 #  ADD_DEFINITIONS(
 #    -D__MACOSX_CORE__

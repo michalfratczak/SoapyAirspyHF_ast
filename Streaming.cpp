@@ -25,6 +25,7 @@
 
 #include "SoapyAirspyHF.hpp"
 #include <SoapySDR/Logger.hpp>
+#include <SoapySDR/Time.hpp>
 #include <SoapySDR/Formats.hpp>
 #include <SoapySDR/ConverterRegistry.hpp>
 #include <algorithm> //min
@@ -39,7 +40,10 @@
 std::vector<std::string> SoapyAirspyHF::getStreamFormats(const int direction, const size_t channel) const {
     std::vector<std::string> formats;
 
-    UNUSED(direction);
+    if(direction != SOAPY_SDR_RX or channel != 0) {
+        SoapySDR::logf(SOAPY_SDR_ERROR, "SoapyAirspyHF::getStreamFormats(%d, %d) invalid channel", direction, channel);
+        return formats;
+    }
 
     for (const auto &target : SoapySDR::ConverterRegistry::listTargetFormats(SOAPY_NATIVE_FORMAT)) {
         formats.push_back(target);
@@ -49,7 +53,11 @@ std::vector<std::string> SoapyAirspyHF::getStreamFormats(const int direction, co
 }
 
 std::string SoapyAirspyHF::getNativeStreamFormat(const int direction, const size_t channel, double &fullScale) const {
-    UNUSED(direction);
+
+    if(direction == SOAPY_SDR_RX) {
+        SoapySDR::logf(SOAPY_SDR_ERROR, "getNativeStreamFormat: RX not supported");
+        return "";
+    }
 
     fullScale = 1.0;
     return SOAPY_NATIVE_FORMAT;
@@ -110,6 +118,9 @@ int SoapyAirspyHF::rx_callback(airspyhf_transfer_t *transfer)
              return transfer->sample_count;
          });
 
+    // Count ticks
+    ticks_ += transfer->sample_count;
+
     if(written < 0) {
         SoapySDR::logf(SOAPY_SDR_INFO, "SoapyAirspyHF::rx_callback: ringbuffer write timeout");
         return 0;
@@ -128,7 +139,10 @@ SoapySDR::Stream *SoapyAirspyHF::setupStream(
         const std::vector<size_t> &channels,
         const SoapySDR::Kwargs &args)
 {
-    UNUSED(direction);
+    if(direction != SOAPY_SDR_RX) {
+        SoapySDR::logf(SOAPY_SDR_ERROR, "setupStream: RX not supported");
+        return nullptr;
+    }
 
     //check the channel configuration
     if (channels.size() > 1 or (channels.size() > 0 and channels.at(0) != 0)) {
@@ -152,7 +166,7 @@ SoapySDR::Stream *SoapyAirspyHF::setupStream(
 
 void SoapyAirspyHF::closeStream(SoapySDR::Stream *stream)
 {
-    UNUSED(stream);
+    (void) stream;
 }
 
 size_t SoapyAirspyHF::getStreamMTU(SoapySDR::Stream *stream) const {
@@ -171,6 +185,9 @@ int SoapyAirspyHF::activateStream(SoapySDR::Stream *stream,
 
     // Clear ringbuffer
     ringbuffer_.clear();
+
+    // Reset ticks
+    ticks_ = 0;
 
     // Start the stream
     ret = airspyhf_start(dev_, &rx_callback_, (void *)this);
@@ -215,8 +232,6 @@ int SoapyAirspyHF::readStream(SoapySDR::Stream *stream,
 
     const auto to_convert = std::min(numElems, getStreamMTU(stream));
 
-    // SoapySDR::logf(SOAPY_SDR_DEBUG, "readStream: numElems=%d, timeoutUs=%ld, topcopy=%ld", numElems, timeoutUs, to_copy);
-
     const auto converted = ringbuffer_.read_at_least
         (to_convert,
          std::chrono::microseconds(timeoutUs),
@@ -231,8 +246,12 @@ int SoapyAirspyHF::readStream(SoapySDR::Stream *stream,
              return to_convert;
          });
 
+    // Count ticks
+
+    timeNs = SoapySDR::ticksToTimeNs(ticks_, sampleRate_);
+
     if(converted < 0) {
-        SoapySDR::logf(SOAPY_SDR_DEBUG, "readStream: ringbuffer read timeout");
+        SoapySDR::logf(SOAPY_SDR_DEBUG, "readStream: ringbuffer read timeout %d", ringbuffer_.available());
         return SOAPY_SDR_TIMEOUT;
     }
 

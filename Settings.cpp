@@ -29,7 +29,11 @@
 
 SoapyAirspyHF::SoapyAirspyHF(const SoapySDR::Kwargs &args)
     : dev_(nullptr),
-      ringbuffer_(8 * 2048) {
+      sampleRate_(0),
+      frequencyCorrection_(0),
+      iqBalance_(0),
+      ringbuffer_(8 * 2048)
+      { // Keep 8 buffers in the ringbuffer
 
     int ret;
 
@@ -43,8 +47,7 @@ SoapyAirspyHF::SoapyAirspyHF(const SoapySDR::Kwargs &args)
         try {
             // Parse hex to serial number
             serial_ = std::stoull(args.at("serial"), nullptr, 16);
-
-            SoapySDR_logf(SOAPY_SDR_INFO, "Serial number: %016llX", serial_);
+            SoapySDR::logf(SOAPY_SDR_INFO, "Serial number: %016llX", serial_);
         } catch (const std::invalid_argument &) {
             throw std::runtime_error("serial is not a hex number");
         } catch (const std::out_of_range &) {
@@ -70,12 +73,18 @@ SoapyAirspyHF::SoapyAirspyHF(const SoapySDR::Kwargs &args)
 
     // Set first sample rate as default
     auto const& rates = listSampleRates(SOAPY_SDR_RX, 0);
-    setSampleRate(SOAPY_SDR_RX, 0, rates[0]);
-    // Reasonable default
+
+    setSampleRate(SOAPY_SDR_RX, 0, rates.front());
     setFrequency(SOAPY_SDR_RX, 0, "RF", 7000000);
     // Default gains
     setGain(SOAPY_SDR_RX, 0, "LNA", 0);
     setGain(SOAPY_SDR_RX, 0, "HF ATT", 0);
+    setGainMode(SOAPY_SDR_RX, 0, true);
+
+    ret = airspyhf_set_lib_dsp(dev_, 1);
+    if(ret != AIRSPYHF_SUCCESS) {
+        SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_lib_dsp() failed: (%d)", ret);
+    }
 
     // TODO
     //apply arguments to settings when they match
@@ -163,9 +172,70 @@ std::string SoapyAirspyHF::getAntenna(const int direction, const size_t channel)
  * Frontend corrections API
  ******************************************************************/
 
-bool SoapyAirspyHF::hasDCOffsetMode(const int direction, const size_t channel) const
-{
-    return false;
+// bool SoapyAirspyHF::hasDCOffsetMode(const int direction, const size_t channel) const
+// {
+//     return false;
+//}
+
+bool SoapyAirspyHF::hasIQBalance(const int direction, const size_t channel) const {
+    return true;
+}
+
+void SoapyAirspyHF::setIQBalance(const int direction, const size_t channel,
+                                 const std::complex<double> &balance) {
+
+    int ret;
+
+    if(direction != SOAPY_SDR_RX or channel != 0) {
+        SoapySDR::logf(SOAPY_SDR_ERROR, "setIQBalance(%d, %d) not supported.", direction, channel);
+        return;
+    }
+
+    if(iqBalance_ != balance) {
+        ret = airspyhf_set_optimal_iq_correction_point(dev_, 0);
+        if(ret != AIRSPYHF_SUCCESS) {
+            SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_optimal_iq_correction_point() failed: %d", ret);
+        } else {
+            iqBalance_ = balance;
+        }
+    }
+}
+
+std::complex<double> SoapyAirspyHF::getIQBalance(const int direction,
+                                                 const size_t channel) const {
+    return iqBalance_;
+}
+
+bool SoapyAirspyHF::hasFrequencyCorrection(const int direction,
+                                           const size_t channel) const {
+    return true;
+}
+
+void SoapyAirspyHF::setFrequencyCorrection(const int direction,
+                                           const size_t channel,
+                                           const double value) {
+
+  SoapySDR_logf(SOAPY_SDR_DEBUG, "setFrequencyCorrection(%d, %d, %f).", direction, channel, value);
+
+    if(direction != SOAPY_SDR_RX or channel != 0) {
+        SoapySDR::logf(SOAPY_SDR_ERROR, "setFrequencyCorrection(%d, %d) not supported.", direction, channel);
+        return;
+    }
+
+    const int32_t correction_ppb =  value * 1000;
+    if(frequencyCorrection_ != correction_ppb) {
+        int ret  = airspyhf_set_calibration(dev_, correction_ppb);
+        if(ret != AIRSPYHF_SUCCESS) {
+            SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_calibration() failed: %d", ret);
+        } else {
+            frequencyCorrection_ = correction_ppb;
+        }
+    }
+}
+
+double SoapyAirspyHF::getFrequencyCorrection(const int direction,
+                                             const size_t channel) const {
+    return 0;
 }
 
 /*******************************************************************
@@ -242,6 +312,10 @@ double SoapyAirspyHF::getGain(const int direction, const size_t channel, const s
         SoapySDR_logf(SOAPY_SDR_ERROR, "getGain(%d, %d, %s) not supported.", direction, channel, name.c_str());
         return 0;
     }
+}
+
+void SoapyAirspyHF::setGain(const int direction, const size_t channel, const double value) {
+    SoapySDR::logf(SOAPY_SDR_INFO, "setGain(%d, %d, %f) not supported", direction, channel, value);
 }
 
 void SoapyAirspyHF::setGain(const int direction, const size_t channel, const std::string &name, const double value)
@@ -364,7 +438,9 @@ void SoapyAirspyHF::setSampleRate(const int direction, const size_t channel,
     int ret;
 
     // Only change if the rate is different
-    if (sampleRate_ != static_cast<uint32_t>(rate)) {
+    uint32_t sampleRate = (uint32_t)rate;
+
+    if (sampleRate_ != sampleRate) {
         ret = airspyhf_set_samplerate(dev_, rate);
         if(ret != AIRSPYHF_SUCCESS) {
             SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_samplerate() failed: %d", ret);
@@ -411,21 +487,24 @@ std::vector<double> SoapyAirspyHF::listSampleRates(const int direction,
     return results;
 }
 
-void SoapyAirspyHF::setBandwidth(const int direction, const size_t channel, const double bw)
-{
-
+void SoapyAirspyHF::setBandwidth(const int direction, const size_t channel, const double bw) {
+    SoapySDR::logf(SOAPY_SDR_INFO, "setBandwidth(%d, %d, %f) not supported.", direction, channel, bw);
 }
 
 double SoapyAirspyHF::getBandwidth(const int direction, const size_t channel) const
 {
-    return 0.0;
+    return 0.9 * sampleRate_;
 }
 
 std::vector<double> SoapyAirspyHF::listBandwidths(const int direction, const size_t channel) const
 {
     std::vector<double> results;
 
-    results.push_back(1000000.0);
+    for(const auto& samplerate: listSampleRates(direction, channel)) {
+        // Reasoable estimate
+        // TODO: maybe cache sample rates?
+        results.push_back(0.9 * samplerate);
+    }
 
     return results;
 }

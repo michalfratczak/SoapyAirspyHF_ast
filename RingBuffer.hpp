@@ -17,20 +17,17 @@
 
 #include <atomic>
 
+
 template <typename T>
 class RingBuffer {
 
-    //const void *buffer_;
     T* buffer_;
-    uint32_t capacity_;
-
-    std::atomic<uint32_t> read_pos_;
-    std::atomic<uint32_t> write_pos_;
+    alignas(64) const uint32_t capacity_;
+    alignas(64) std::atomic<uint32_t> read_pos_{0};
+    alignas(64) std::atomic<uint32_t> write_pos_{0};
 
     std::mutex lock_;
-    std::condition_variable produced_cond_;
-    std::condition_variable consumed_cond_;
-
+    std::condition_variable cond_;
 
     // Unmap mirror memory
     static void unmap_mirror(const void *addr, const size_t size) noexcept {
@@ -125,18 +122,20 @@ class RingBuffer {
 
     inline void produce(const uint32_t elements) noexcept {
         // intentional wrap around arithmetic
-        write_pos_ += elements;
-        produced_cond_.notify_one();
+        write_pos_.fetch_add(elements, std::memory_order_release);
+        cond_.notify_one();
     }
 
     inline void consume(const uint32_t elements) noexcept {
         // intentional wrap around arithmetic
-        read_pos_ += elements;
-        consumed_cond_.notify_one();
+        read_pos_.fetch_add(elements, std::memory_order_release);
+        cond_.notify_one();
     }
 
     inline uint32_t available() noexcept {
-        return (write_pos_ - read_pos_);
+        auto write_pos = write_pos_.load(std::memory_order_acquire);
+        auto read_pos = read_pos_.load(std::memory_order_acquire);
+        return write_pos - read_pos;
     }
 
     inline uint32_t free() noexcept {
@@ -144,33 +143,45 @@ class RingBuffer {
     }
 
     inline const T* read_ptr() const noexcept {
-        return buffer_ + mask(read_pos_);
+        return buffer_ + mask(read_pos_.load(std::memory_order_acquire));
     }
 
     inline T* write_ptr() const noexcept {
-        return buffer_ + mask(write_pos_);
+        return buffer_ + mask(write_pos_.load(std::memory_order_acquire));
     }
 
     void clear() noexcept {
-        // std::unique_lock<std::mutex> lock(lock_);
-        read_pos_ = 0;
-        write_pos_ = 0;
+        std::unique_lock<std::mutex> lock(lock_);
+        read_pos_.store(0, std::memory_order_release);
+        write_pos_.store(0, std::memory_order_release);
         // wake up producer
         // no need to wake up consumer since there's nothing to consume
-        consumed_cond_.notify_all();
+        //consumed_cond_.notify_all();
+        cond_.notify_all();
     }
 
-    int32_t read_at_least(uint32_t elements,
+    int32_t read_at_least(const uint32_t elements,
                        std::chrono::microseconds timeout,
                        std::function<uint32_t(const T* begin, const uint32_t avail)> callback) {
 
+        uint32_t avail_ = available();
+        if(avail_ >= elements) {
+            // We have enough elements, no need to wait
+            uint32_t consumed =  callback(read_ptr(), avail_);
+            consume(consumed);
+            return consumed;
+        }
+
+        // Else wait for more elements
         std::unique_lock<std::mutex> lock(lock_);
         // Wait for enough data to be available
-        if(produced_cond_.wait_for(lock, timeout, [this, elements] {
-            return available() >= elements; }))
+        if(cond_.wait_for(lock, timeout, [&] {
+            avail_ = available();
+            return avail_ >= elements;
+        }))
         {
             // Ok, we have enough data
-            uint32_t consumed = callback(read_ptr(), available());
+            uint32_t consumed = callback(read_ptr(), avail_);
             consume(consumed);
             return consumed;
         } else {
@@ -180,17 +191,29 @@ class RingBuffer {
     }
 
 
-    int32_t write_at_least(uint32_t elements,
+    int32_t write_at_least(const uint32_t elements,
                        std::chrono::microseconds timeout,
                        std::function<uint32_t(T* begin, const uint32_t free)> callback) {
 
+        uint32_t free_ = free();
+
+        if(free_ >= elements) {
+            // Ok, we have enough space, not need to wait
+            uint32_t produced = callback(write_ptr(), free_);
+            produce(produced);
+            return produced;
+        }
+
+        // Else wait for enough space to be available
         std::unique_lock<std::mutex> lock(lock_);
         // Wait for enough data to be available
-        if(consumed_cond_.wait_for(lock, timeout, [this, elements] {
-            return free() >= elements; }))
+        if(cond_.wait_for(lock, timeout, [&] {
+            free_ = free();
+            return free_ >= elements;
+        }))
         {
             // Ok, we have enough data
-            uint32_t produced = callback(write_ptr(), free());
+            uint32_t produced = callback(write_ptr(), free_);
             produce(produced);
             return produced;
         } else {
@@ -201,9 +224,7 @@ class RingBuffer {
 
     RingBuffer(uint32_t capacity)
         : buffer_(map_mirror(capacity * sizeof(T))),
-          capacity_(capacity),
-          read_pos_(0),
-          write_pos_(0) {
+          capacity_(capacity) {
     }
 
     virtual ~RingBuffer() {

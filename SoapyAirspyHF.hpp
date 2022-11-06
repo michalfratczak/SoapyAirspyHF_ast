@@ -25,23 +25,17 @@
 #pragma once
 
 #include <SoapySDR/Device.hpp>
-#include <SoapySDR/Logger.h>
-#include <SoapySDR/Types.h>
+#include <SoapySDR/Logger.hpp>
+#include <SoapySDR/Types.hpp>
 #include <SoapySDR/ConverterRegistry.hpp>
 #include <stdexcept>
-#include <thread>
-#include <mutex>
 #include <atomic>
-#include <condition_variable>
 #include <string>
 #include <cstring>
 #include <algorithm>
-
+#include <complex>
 
 #include <libairspyhf/airspyhf.h>
-
-// It's easy to grep for variables when marked with this macro.
-#define UNUSED(x) (void)(x)
 
 #include "RingBuffer.hpp"
 
@@ -116,7 +110,26 @@ public:
      * Frontend corrections API
      ******************************************************************/
 
-    bool hasDCOffsetMode(const int direction, const size_t channel) const;
+    //bool hasDCOffsetMode(const int direction, const size_t channel) const;
+
+
+    // void setDCOffsetMode(const int direction, const size_t channel, const bool automatic);
+    // bool getDCOffsetMode(const int direction, const size_t channel) const;
+    // bool hasDCOffset(const int direction, const size_t channel) const;
+    // void setDCOffset(const int direction, const size_t channel, const std::complex<double> &offset);
+    //  std::complex<double> getDCOffset(const int direction, const size_t channel) const;
+
+    bool hasIQBalance(const int direction, const size_t channel) const override;
+    void setIQBalance(const int direction, const size_t channel, const std::complex<double> &balance) override;
+    virtual std::complex<double> getIQBalance(const int direction, const size_t channel) const override;
+
+    // virtual bool hasIQBalanceMode(const int direction, const size_t channel) const;
+    // virtual void setIQBalanceMode(const int direction, const size_t channel, const bool automatic);
+    // virtual bool getIQBalanceMode(const int direction, const size_t channel) const;
+
+    bool hasFrequencyCorrection(const int direction, const size_t channel) const override;
+    void setFrequencyCorrection(const int direction, const size_t channel, const double value) override;
+    double getFrequencyCorrection(const int direction, const size_t channel) const override;
 
     /*******************************************************************
      * Gain API
@@ -130,7 +143,7 @@ public:
 
     bool getGainMode(const int direction, const size_t channel) const;
 
-//    void setGain(const int direction, const size_t channel, const double value);
+    void setGain(const int direction, const size_t channel, const double value);
 
     void setGain(const int direction, const size_t channel, const std::string &name, const double value);
 
@@ -199,8 +212,12 @@ private:
     double lnaGain_;
     double hfAttenuation_;
 
+    double frequencyCorrection_;
+    std::complex<double> iqBalance_;
+
     SoapySDR::ConverterRegistry::ConverterFunction converterFunction_;
 
+    std::atomic<long long> ticks_;
     RingBuffer<airspyhf_complex_float_t> ringbuffer_;
 
 public:
