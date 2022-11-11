@@ -126,8 +126,8 @@ SoapySDR::Stream *SoapyAirspyHF::setupStream(
         const SoapySDR::Kwargs &args)
 {
     if(direction != SOAPY_SDR_RX or channels.size() != 1 or channels.at(0) != 0) {
-        SoapySDR::logf(SOAPY_SDR_ERROR, "setupStream: RX not supported");
-        return nullptr;
+        SoapySDR::logf(SOAPY_SDR_INFO, "SoapyAirspyHF::setupStream(%d, %s, %d, %d) invalid channel",
+                       direction, format.c_str(), channels.size(), channels.at(0));
     }
 
     // Check the channel configuration
@@ -219,7 +219,8 @@ int SoapyAirspyHF::readStream(SoapySDR::Stream *stream,
                               const long timeoutUs) {
 
     if(flags != 0) {
-        SoapySDR::logf(SOAPY_SDR_DEBUG, "readStream: flags not supported");
+        SoapySDR::logf(SOAPY_SDR_DEBUG, "SoapyAirspyHF::readStream: flags not supported");
+        flags = 0;
     }
 
     // Convert either requested number of elements or the MTU.

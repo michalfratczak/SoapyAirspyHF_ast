@@ -61,7 +61,8 @@ SoapyAirspyHF::SoapyAirspyHF(const SoapySDR::Kwargs &args)
         ret = airspyhf_open_sn(&dev_, serial_);
         if (ret != AIRSPYHF_SUCCESS) {
             SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_open_sn() failed: (%d)", ret);
-            throw std::runtime_error("Unable to open AirspyHF device with S/N " + serialstr.str());
+            throw std::runtime_error("Unable to open AirspyHF device with S/N "
+                                     + serialstr.str());
         }
 
         SoapySDR::logf(SOAPY_SDR_INFO, "Found AirspyHF device: serial =  %s",
@@ -266,7 +267,8 @@ bool SoapyAirspyHF::hasGainMode(const int direction, const size_t channel) const
 void SoapyAirspyHF::setGainMode(const int direction, const size_t channel, const bool automatic)
 {
     if(direction != SOAPY_SDR_RX or channel != 0) {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "setGainMode(%d, %d, %d) not supported.", direction, channel, automatic);
+        SoapySDR_logf(SOAPY_SDR_ERROR, "setGainMode(%d, %d, %d) not supported.",
+                      direction, channel, automatic);
         return;
     }
 
