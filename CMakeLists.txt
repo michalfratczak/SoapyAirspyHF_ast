@@ -38,7 +38,7 @@ if (APPLE)
 endif(APPLE)
 
 # Extra flags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-parameter -Wstrict-aliasing")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-parameter -Wstrict-aliasing -faligned-new")
 
 # IF (APPLE)
 #  ADD_DEFINITIONS(

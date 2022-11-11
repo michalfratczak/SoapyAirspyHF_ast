@@ -3,6 +3,7 @@
  * 
  * Copyright (c) 2015 Charles J. Cliffe
  * Copyright (c) 2018 Corey Stotts
+ * Copyright (c) 2022 Albin Stigö
 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -111,8 +112,6 @@ public:
      ******************************************************************/
 
     //bool hasDCOffsetMode(const int direction, const size_t channel) const;
-
-
     // void setDCOffsetMode(const int direction, const size_t channel, const bool automatic);
     // bool getDCOffsetMode(const int direction, const size_t channel) const;
     // bool hasDCOffset(const int direction, const size_t channel) const;
@@ -208,6 +207,7 @@ private:
     uint32_t sampleRate_;
     uint32_t centerFrequency_;
 
+    bool   enableDSP_;
     bool   agcEnabled_;
     double lnaGain_;
     double hfAttenuation_;

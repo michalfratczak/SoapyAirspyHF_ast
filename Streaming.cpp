@@ -3,6 +3,7 @@
  * 
  * Copyright (c) 2015 Charles J. Cliffe
  * Copyright (c) 2018 Corey Stotts
+ * Copyright (c) 2022 Albin Stigö
 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,9 +29,9 @@
 #include <SoapySDR/Time.hpp>
 #include <SoapySDR/Formats.hpp>
 #include <SoapySDR/ConverterRegistry.hpp>
-#include <algorithm> //min
-#include <climits> //SHRT_MAX
-#include <cstring> // memcpy
+#include <algorithm>
+#include <climits>
+#include <cstring>
 #include <chrono>
 
 
@@ -54,8 +55,8 @@ std::vector<std::string> SoapyAirspyHF::getStreamFormats(const int direction, co
 
 std::string SoapyAirspyHF::getNativeStreamFormat(const int direction, const size_t channel, double &fullScale) const {
 
-    if(direction == SOAPY_SDR_RX) {
-        SoapySDR::logf(SOAPY_SDR_ERROR, "getNativeStreamFormat: RX not supported");
+    if(direction != SOAPY_SDR_RX or channel != 0) {
+        SoapySDR::logf(SOAPY_SDR_ERROR, "SoapyAirspyHF::getNativeStreamFormat(%d, %d) invalid channel", direction, channel);
         return "";
     }
 
@@ -64,28 +65,13 @@ std::string SoapyAirspyHF::getNativeStreamFormat(const int direction, const size
 }
 
 SoapySDR::ArgInfoList SoapyAirspyHF::getStreamArgsInfo(const int direction, const size_t channel) const {
+
     SoapySDR::ArgInfoList streamArgs;
 
-    // TODO
-    // SoapySDR::ArgInfo chanArg;
-    // chanArg.key = "chan";
-    // chanArg.value = "mono_l";
-    // chanArg.name = "Channel Setup";
-    // chanArg.description = "Input channel configuration.";
-    // chanArg.type = SoapySDR::ArgInfo::STRING;
-    // std::vector<std::string> chanOpts;
-    // std::vector<std::string> chanOptNames;
-    // chanOpts.push_back("mono_l");
-    // chanOptNames.push_back("Mono Left");
-    // chanOpts.push_back("mono_r");
-    // chanOptNames.push_back("Mono Right");
-    // chanOpts.push_back("stereo_iq");
-    // chanOptNames.push_back("Complex L/R = I/Q");
-    // chanOpts.push_back("stereo_qi");
-    // chanOptNames.push_back("Complex L/R = Q/I");
-    // chanArg.options = chanOpts;
-    // chanArg.optionNames = chanOptNames;
-    // streamArgs.push_back(chanArg);
+    if(direction != SOAPY_SDR_RX or channel != 0) {
+        SoapySDR::logf(SOAPY_SDR_ERROR, "SoapyAirspyHF::getStreamArgsInfo(%d, %d) invalid channel", direction, channel);
+        return streamArgs;
+    }
 
     return streamArgs;
 }
@@ -104,7 +90,7 @@ static int rx_callback_(airspyhf_transfer_t *transfer)
 int SoapyAirspyHF::rx_callback(airspyhf_transfer_t *transfer)
 {
 
-    const uint32_t timeout_us = 500000;
+    const uint32_t timeout_us = 500000; // 500ms
 
     const auto written = ringbuffer_.write_at_least
         (transfer->sample_count,
@@ -119,7 +105,7 @@ int SoapyAirspyHF::rx_callback(airspyhf_transfer_t *transfer)
          });
 
     // Count ticks
-    ticks_ += transfer->sample_count;
+    ticks_.fetch_add(transfer->sample_count, std::memory_order_release);
 
     if(written < 0) {
         SoapySDR::logf(SOAPY_SDR_INFO, "SoapyAirspyHF::rx_callback: ringbuffer write timeout");
@@ -139,12 +125,12 @@ SoapySDR::Stream *SoapyAirspyHF::setupStream(
         const std::vector<size_t> &channels,
         const SoapySDR::Kwargs &args)
 {
-    if(direction != SOAPY_SDR_RX) {
+    if(direction != SOAPY_SDR_RX or channels.size() != 1 or channels.at(0) != 0) {
         SoapySDR::logf(SOAPY_SDR_ERROR, "setupStream: RX not supported");
         return nullptr;
     }
 
-    //check the channel configuration
+    // Check the channel configuration
     if (channels.size() > 1 or (channels.size() > 0 and channels.at(0) != 0)) {
         throw std::runtime_error("setupStream invalid channel selection");
     }
@@ -181,7 +167,10 @@ int SoapyAirspyHF::activateStream(SoapySDR::Stream *stream,
 {
     int ret;
     // No flags supported
-    if (flags != 0) { return SOAPY_SDR_NOT_SUPPORTED; }
+    if (flags != 0) {
+        SoapySDR::logf(SOAPY_SDR_DEBUG, "activateStream: flags not supported");
+        return SOAPY_SDR_NOT_SUPPORTED;
+    }
 
     // Clear ringbuffer
     ringbuffer_.clear();
@@ -191,7 +180,6 @@ int SoapyAirspyHF::activateStream(SoapySDR::Stream *stream,
 
     // Start the stream
     ret = airspyhf_start(dev_, &rx_callback_, (void *)this);
-
     if (ret != AIRSPYHF_SUCCESS) {
         return SOAPY_SDR_STREAM_ERROR;
     }
@@ -207,9 +195,11 @@ int SoapyAirspyHF::deactivateStream(SoapySDR::Stream *stream, const int flags, c
 
     SoapySDR::logf(SOAPY_SDR_DEBUG, "deactivateStream: flags=%d, timeNs=%lld", flags, timeNs);
 
-
     // No flags supported
-    if (flags != 0) { return SOAPY_SDR_NOT_SUPPORTED; }
+    if (flags != 0) {
+        SoapySDR::logf(SOAPY_SDR_DEBUG, "deactivateStream: flags not supported");
+        return SOAPY_SDR_NOT_SUPPORTED;
+    }
 
     // Stop streaming
     ret = airspyhf_stop(dev_);
@@ -228,8 +218,11 @@ int SoapyAirspyHF::readStream(SoapySDR::Stream *stream,
                               long long &timeNs,
                               const long timeoutUs) {
 
-    if(flags != 0) { return SOAPY_SDR_NOT_SUPPORTED; }
+    if(flags != 0) {
+        SoapySDR::logf(SOAPY_SDR_DEBUG, "readStream: flags not supported");
+    }
 
+    // Convert either requested number of elements or the MTU.
     const auto to_convert = std::min(numElems, getStreamMTU(stream));
 
     const auto converted = ringbuffer_.read_at_least
@@ -246,12 +239,12 @@ int SoapyAirspyHF::readStream(SoapySDR::Stream *stream,
              return to_convert;
          });
 
-    // Count ticks
-
-    timeNs = SoapySDR::ticksToTimeNs(ticks_, sampleRate_);
+    // Count ticks to return time
+    timeNs = SoapySDR::ticksToTimeNs(ticks_.load(std::memory_order_acquire),
+                                     sampleRate_);
 
     if(converted < 0) {
-        SoapySDR::logf(SOAPY_SDR_DEBUG, "readStream: ringbuffer read timeout %d", ringbuffer_.available());
+        SoapySDR::logf(SOAPY_SDR_INFO, "readStream: ringbuffer read timeout.");
         return SOAPY_SDR_TIMEOUT;
     }
 

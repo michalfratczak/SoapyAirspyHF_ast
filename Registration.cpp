@@ -3,6 +3,7 @@
  * 
  * Copyright (c) 2015 Charles J. Cliffe
  * Copyright (c) 2018 Corey Stotts
+ * Copyright (c) 2022 Albin Stigö
 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,8 +26,10 @@
 
 #include "SoapyAirspyHF.hpp"
 #include <SoapySDR/Registry.hpp>
-#include <cstdlib> //malloc
+#include <cstdlib>
+#include <iomanip>
 #include <algorithm>
+
 
 static std::vector<SoapySDR::Kwargs> findAirspyHF(const SoapySDR::Kwargs &args)
 {
@@ -34,8 +37,6 @@ static std::vector<SoapySDR::Kwargs> findAirspyHF(const SoapySDR::Kwargs &args)
 
     airspyhf_lib_version_t asVersion;
     airspyhf_lib_version(&asVersion);
-
-    // SoapySDR_setLogLevel(SOAPY_SDR_DEBUG);
 
     SoapySDR_logf(SOAPY_SDR_DEBUG, "AirSpyHF Lib v%d.%d rev %d", asVersion.major_version, asVersion.minor_version, asVersion.revision);
 
@@ -51,8 +52,7 @@ static std::vector<SoapySDR::Kwargs> findAirspyHF(const SoapySDR::Kwargs &args)
     for (int i = 0; i < count; i++) {
         std::stringstream serialstr;
 
-        serialstr.str("");
-        serialstr << std::hex << serials[i];
+        serialstr << std::setfill('0') << std::setw(16) << std::hex << serials[i];
 
         SoapySDR_logf(SOAPY_SDR_DEBUG, "Serial %s", serialstr.str().c_str());
 
