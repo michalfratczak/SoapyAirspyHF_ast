@@ -200,7 +200,7 @@ void SoapyAirspyHF::setIQBalance(const int direction, const size_t channel,
         // TODO
         ret = airspyhf_set_optimal_iq_correction_point(dev_, 0);
         if(ret != AIRSPYHF_SUCCESS) {
-            SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_optimal_iq_correction_point() failed: %d", ret);
+            SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_optimal_iq_correction_point() failed: %d", ret);
         } else {
             iqBalance_ = balance;
         }
@@ -221,7 +221,7 @@ void SoapyAirspyHF::setFrequencyCorrection(const int direction,
                                            const size_t channel,
                                            const double value) {
 
-  SoapySDR_logf(SOAPY_SDR_DEBUG, "setFrequencyCorrection(%d, %d, %f).", direction, channel, value);
+    SoapySDR::logf(SOAPY_SDR_DEBUG, "setFrequencyCorrection(%d, %d, %f).", direction, channel, value);
 
     if(direction != SOAPY_SDR_RX or channel != 0) {
         SoapySDR::logf(SOAPY_SDR_ERROR, "setFrequencyCorrection(%d, %d) not supported.", direction, channel);
@@ -232,7 +232,7 @@ void SoapyAirspyHF::setFrequencyCorrection(const int direction,
     if(frequencyCorrection_ != correction_ppb) {
         int ret  = airspyhf_set_calibration(dev_, correction_ppb);
         if(ret != AIRSPYHF_SUCCESS) {
-            SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_calibration() failed: %d", ret);
+            SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_calibration() failed: %d", ret);
         } else {
             frequencyCorrection_ = correction_ppb;
         }
@@ -267,7 +267,7 @@ bool SoapyAirspyHF::hasGainMode(const int direction, const size_t channel) const
 void SoapyAirspyHF::setGainMode(const int direction, const size_t channel, const bool automatic)
 {
     if(direction != SOAPY_SDR_RX or channel != 0) {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "setGainMode(%d, %d, %d) not supported.",
+        SoapySDR::logf(SOAPY_SDR_ERROR, "setGainMode(%d, %d, %d) not supported.",
                       direction, channel, automatic);
         return;
     }
@@ -276,7 +276,7 @@ void SoapyAirspyHF::setGainMode(const int direction, const size_t channel, const
         SoapySDR::logf(SOAPY_SDR_DEBUG, "setGainMode(%d, %d, %d)", direction, channel, automatic);
         int ret = airspyhf_set_hf_agc(dev_, automatic);
         if(ret != AIRSPYHF_SUCCESS) {
-            SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_hf_att() failed: %d", ret);
+            SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_hf_att() failed: %d", ret);
         } else {
             agcEnabled_ = automatic;
         }
@@ -297,7 +297,7 @@ SoapySDR::Range SoapyAirspyHF::getGainRange(const int direction, const size_t ch
         return SoapySDR::Range(0, 48, 6);
     }
     else {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "getGainRange(%d, %d, %s) not supported.", direction, channel, name.c_str());
+        SoapySDR::logf(SOAPY_SDR_ERROR, "getGainRange(%d, %d, %s) not supported.", direction, channel, name.c_str());
         return SoapySDR::Range(0, 0);
     }
 }
@@ -305,7 +305,7 @@ SoapySDR::Range SoapyAirspyHF::getGainRange(const int direction, const size_t ch
 double SoapyAirspyHF::getGain(const int direction, const size_t channel, const std::string &name) const
 {
     if(direction != SOAPY_SDR_RX or channel != 0) {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "getGain(%d, %d, %s) not supported.", direction, channel, name.c_str());
+        SoapySDR::logf(SOAPY_SDR_ERROR, "getGain(%d, %d, %s) not supported.", direction, channel, name.c_str());
         return 0;
     }
 
@@ -316,7 +316,7 @@ double SoapyAirspyHF::getGain(const int direction, const size_t channel, const s
         return hfAttenuation_;
     }
     else {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "getGain(%d, %d, %s) not supported.", direction, channel, name.c_str());
+        SoapySDR::logf(SOAPY_SDR_ERROR, "getGain(%d, %d, %s) not supported.", direction, channel, name.c_str());
         return 0;
     }
 }
@@ -328,7 +328,7 @@ void SoapyAirspyHF::setGain(const int direction, const size_t channel, const dou
 void SoapyAirspyHF::setGain(const int direction, const size_t channel, const std::string &name, const double value)
 {
     if(direction != SOAPY_SDR_RX or channel != 0) {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "setGain(%d, %d, %s, %f) not supported.", direction, channel, name.c_str(), value);
+        SoapySDR::logf(SOAPY_SDR_ERROR, "setGain(%d, %d, %s, %f) not supported.", direction, channel, name.c_str(), value);
         return;
     }
 
@@ -337,7 +337,7 @@ void SoapyAirspyHF::setGain(const int direction, const size_t channel, const std
     if (name == "LNA") {
         ret = airspyhf_set_hf_lna(dev_, value > 3 ? 1 : 0);
         if(ret != AIRSPYHF_SUCCESS) {
-            SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_hf_lna() failed: %d", ret);
+            SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_hf_lna() failed: %d", ret);
         } else {
             lnaGain_ = value;
         }
@@ -345,17 +345,17 @@ void SoapyAirspyHF::setGain(const int direction, const size_t channel, const std
     }
     else if (name == "HF ATT") {
         const uint8_t att = static_cast<uint8_t>(std::round(value / 6));
-        SoapySDR_logf(SOAPY_SDR_DEBUG, "setGain(%d, %d, %s, %f) -> %d",
+        SoapySDR::logf(SOAPY_SDR_DEBUG, "setGain(%d, %d, %s, %f) -> %d",
                       direction, channel, name.c_str(), value, att);
         int ret = airspyhf_set_hf_att(dev_, att);
         if(ret != AIRSPYHF_SUCCESS) {
-            SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_hf_att() failed: %d", ret);
+            SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_hf_att() failed: %d", ret);
         } else {
             hfAttenuation_ = value;
         }
     }
     else {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "setGain(%d, %d, %s, %f) not supported.", direction, channel, name.c_str(), value);
+        SoapySDR::logf(SOAPY_SDR_ERROR, "setGain(%d, %d, %s, %f) not supported.", direction, channel, name.c_str(), value);
     }
 }
 
@@ -371,26 +371,26 @@ void SoapyAirspyHF::setFrequency(const int direction,
     int ret;
 
     if(direction != SOAPY_SDR_RX or name != "RF" or channel != 0) {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "setFrequency(%d, %d, %s, %f) not supported.",
+        SoapySDR::logf(SOAPY_SDR_ERROR, "setFrequency(%d, %d, %s, %f) not supported.",
                       direction, channel, name.c_str(), frequency);
         return;
     }
 
     centerFrequency_ = (uint32_t)frequency;
 
-    SoapySDR_logf(SOAPY_SDR_DEBUG, "setFrequency(%d, %d, %s, %f)",
+    SoapySDR::logf(SOAPY_SDR_DEBUG, "setFrequency(%d, %d, %s, %f)",
                   direction, channel, name.c_str(), frequency);
 
     ret = airspyhf_set_freq(dev_, centerFrequency_);
     if(ret != AIRSPYHF_SUCCESS) {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_freq() failed: %d", ret);
+        SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_freq() failed: %d", ret);
     }
 }
 
 double SoapyAirspyHF::getFrequency(const int direction, const size_t channel, const std::string &name) const
 {
     if(name != "RF") {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "getFrequency(%d, %d, %s) not supported.",
+        SoapySDR::logf(SOAPY_SDR_ERROR, "getFrequency(%d, %d, %s) not supported.",
                       direction, channel, name.c_str());
         return 0.0;
     }
@@ -415,7 +415,7 @@ SoapySDR::RangeList SoapyAirspyHF::getFrequencyRange(const int direction,
     SoapySDR::RangeList results;
 
     if(direction != SOAPY_SDR_RX or name != "RF" or channel != 0) {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "getFrequencyRange(%d, %d, %s) not supported.",
+        SoapySDR::logf(SOAPY_SDR_ERROR, "getFrequencyRange(%d, %d, %s) not supported.",
                       direction, channel, name.c_str());
         // Empty results
         return results;
@@ -450,7 +450,7 @@ void SoapyAirspyHF::setSampleRate(const int direction, const size_t channel,
 
     ret = airspyhf_set_samplerate(dev_, sampleRate_);
     if(ret != AIRSPYHF_SUCCESS) {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_samplerate() failed: %d", ret);
+        SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_samplerate() failed: %d", ret);
         return;
     }
 }
@@ -469,7 +469,7 @@ std::vector<double> SoapyAirspyHF::listSampleRates(const int direction,
     uint32_t numRates = 0;
     ret = airspyhf_get_samplerates(dev_, &numRates, 0);
     if (ret != AIRSPYHF_SUCCESS) {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_get_samplerates() failed: %d", ret);
+        SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_get_samplerates() failed: %d", ret);
         return results;
     }
 
@@ -478,7 +478,7 @@ std::vector<double> SoapyAirspyHF::listSampleRates(const int direction,
 
     ret = airspyhf_get_samplerates(dev_, samplerates.data(), numRates);
     if (ret != AIRSPYHF_SUCCESS) {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_get_samplerates() failed: %d", ret);
+        SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_get_samplerates() failed: %d", ret);
         return results;
     }
 
@@ -542,16 +542,16 @@ void SoapyAirspyHF::writeSetting(const std::string &key, const std::string &valu
         // Enables/Disables the IQ Correction, IF shift and Fine Tuning.
         ret = airspyhf_set_lib_dsp(dev_, enable);
         if(ret != AIRSPYHF_SUCCESS) {
-            SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_lib_dsp() failed: (%d)", ret);
+            SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_lib_dsp() failed: (%d)", ret);
         } else {
             SoapySDR::logf(SOAPY_SDR_DEBUG, "airspyhf_set_lib_dsp(%d)", enable);
         }
     }
     else {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "writeSetting(%s, %s) not supported.", key.c_str(), value.c_str());
+        SoapySDR::logf(SOAPY_SDR_ERROR, "writeSetting(%s, %s) not supported.", key.c_str(), value.c_str());
     }
 
-    SoapySDR_logf(SOAPY_SDR_DEBUG, "writeSetting(%s, %s)", key.c_str(), value.c_str());
+    SoapySDR::logf(SOAPY_SDR_DEBUG, "writeSetting(%s, %s)", key.c_str(), value.c_str());
 }
 
 std::string SoapyAirspyHF::readSetting(const std::string &key) const
@@ -560,7 +560,7 @@ std::string SoapyAirspyHF::readSetting(const std::string &key) const
         return enableDSP_ ? "true" : "false";
     }
     else {
-        SoapySDR_logf(SOAPY_SDR_ERROR, "readSetting(%s) not supported.", key.c_str());
+        SoapySDR::logf(SOAPY_SDR_ERROR, "readSetting(%s) not supported.", key.c_str());
         return "";
     }
 }

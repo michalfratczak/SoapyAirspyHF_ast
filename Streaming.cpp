@@ -166,10 +166,9 @@ int SoapyAirspyHF::activateStream(SoapySDR::Stream *stream,
                                   const size_t numElems)
 {
     int ret;
-    // No flags supported
+
     if (flags != 0) {
         SoapySDR::logf(SOAPY_SDR_DEBUG, "activateStream: flags not supported");
-        return SOAPY_SDR_NOT_SUPPORTED;
     }
 
     // Clear ringbuffer
@@ -181,6 +180,7 @@ int SoapyAirspyHF::activateStream(SoapySDR::Stream *stream,
     // Start the stream
     ret = airspyhf_start(dev_, &rx_callback_, (void *)this);
     if (ret != AIRSPYHF_SUCCESS) {
+        SoapySDR::logf(SOAPY_SDR_ERROR, "activateStream: airspyhf_start failed: %d", ret);
         return SOAPY_SDR_STREAM_ERROR;
     }
 
@@ -195,16 +195,14 @@ int SoapyAirspyHF::deactivateStream(SoapySDR::Stream *stream, const int flags, c
 
     SoapySDR::logf(SOAPY_SDR_DEBUG, "deactivateStream: flags=%d, timeNs=%lld", flags, timeNs);
 
-    // No flags supported
     if (flags != 0) {
         SoapySDR::logf(SOAPY_SDR_DEBUG, "deactivateStream: flags not supported");
-        return SOAPY_SDR_NOT_SUPPORTED;
     }
 
     // Stop streaming
     ret = airspyhf_stop(dev_);
-
     if (ret != AIRSPYHF_SUCCESS) {
+        SoapySDR::logf(SOAPY_SDR_ERROR, "deactivateStream: airspyhf_stop() failed: %d", ret);
         return SOAPY_SDR_STREAM_ERROR;
     }
 
