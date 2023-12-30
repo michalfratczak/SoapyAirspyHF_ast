@@ -1,6 +1,6 @@
 /*
  * The MIT License (MIT)
- * 
+ *
  * Copyright (c) 2015 Charles J. Cliffe
  * Copyright (c) 2018 Corey Stotts
  * Copyright (c) 2022 Albin Stigö
@@ -25,55 +25,66 @@
  */
 
 #include "SoapyAirspyHF.hpp"
+
+#include <SoapySDR/ConverterRegistry.hpp>
+#include <SoapySDR/Formats.hpp>
 #include <SoapySDR/Logger.hpp>
 #include <SoapySDR/Time.hpp>
-#include <SoapySDR/Formats.hpp>
-#include <SoapySDR/ConverterRegistry.hpp>
-#include <algorithm>
-#include <climits>
-#include <cstring>
-#include <chrono>
 
+#include <algorithm>
 
 #define SOAPY_NATIVE_FORMAT SOAPY_SDR_CF32
 
+std::vector<std::string>
+SoapyAirspyHF::getStreamFormats(const int direction,
+                                const size_t channel) const {
+  std::vector<std::string> formats;
 
-std::vector<std::string> SoapyAirspyHF::getStreamFormats(const int direction, const size_t channel) const {
-    std::vector<std::string> formats;
-
-    if(direction != SOAPY_SDR_RX or channel != 0) {
-        SoapySDR::logf(SOAPY_SDR_ERROR, "SoapyAirspyHF::getStreamFormats(%d, %d) invalid channel", direction, channel);
-        return formats;
-    }
-
-    for (const auto &target : SoapySDR::ConverterRegistry::listTargetFormats(SOAPY_NATIVE_FORMAT)) {
-        formats.push_back(target);
-    }
-
+  if (direction != SOAPY_SDR_RX or channel != 0) {
+    SoapySDR::logf(SOAPY_SDR_ERROR,
+                   "SoapyAirspyHF::getStreamFormats(%d, %d) invalid channel",
+                   direction, channel);
     return formats;
+  }
+
+  for (const auto &target :
+       SoapySDR::ConverterRegistry::listTargetFormats(SOAPY_NATIVE_FORMAT)) {
+    formats.push_back(target);
+  }
+
+  return formats;
 }
 
-std::string SoapyAirspyHF::getNativeStreamFormat(const int direction, const size_t channel, double &fullScale) const {
+std::string SoapyAirspyHF::getNativeStreamFormat(const int direction,
+                                                 const size_t channel,
+                                                 double &fullScale) const {
 
-    if(direction != SOAPY_SDR_RX or channel != 0) {
-        SoapySDR::logf(SOAPY_SDR_ERROR, "SoapyAirspyHF::getNativeStreamFormat(%d, %d) invalid channel", direction, channel);
-        return "";
-    }
+  if (direction != SOAPY_SDR_RX or channel != 0) {
+    SoapySDR::logf(
+        SOAPY_SDR_ERROR,
+        "SoapyAirspyHF::getNativeStreamFormat(%d, %d) invalid channel",
+        direction, channel);
+    return "";
+  }
 
-    fullScale = 1.0;
-    return SOAPY_NATIVE_FORMAT;
+  fullScale = 1.0;
+  return SOAPY_NATIVE_FORMAT;
 }
 
-SoapySDR::ArgInfoList SoapyAirspyHF::getStreamArgsInfo(const int direction, const size_t channel) const {
+SoapySDR::ArgInfoList
+SoapyAirspyHF::getStreamArgsInfo(const int direction,
+                                 const size_t channel) const {
 
-    SoapySDR::ArgInfoList streamArgs;
+  SoapySDR::ArgInfoList streamArgs;
 
-    if(direction != SOAPY_SDR_RX or channel != 0) {
-        SoapySDR::logf(SOAPY_SDR_ERROR, "SoapyAirspyHF::getStreamArgsInfo(%d, %d) invalid channel", direction, channel);
-        return streamArgs;
-    }
-
+  if (direction != SOAPY_SDR_RX or channel != 0) {
+    SoapySDR::logf(SOAPY_SDR_ERROR,
+                   "SoapyAirspyHF::getStreamArgsInfo(%d, %d) invalid channel",
+                   direction, channel);
     return streamArgs;
+  }
+
+  return streamArgs;
 }
 
 /*******************************************************************
@@ -81,171 +92,176 @@ SoapySDR::ArgInfoList SoapyAirspyHF::getStreamArgsInfo(const int direction, cons
  ******************************************************************/
 
 // Static trampoline for libairspyhf callback
-static int rx_callback_(airspyhf_transfer_t *transfer)
-{
-    SoapyAirspyHF *self = (SoapyAirspyHF *)transfer->ctx;
-    return self->rx_callback(transfer);
+int rx_callback_(airspyhf_transfer_t *transfer) {
+  SoapyAirspyHF *self = (SoapyAirspyHF *)transfer->ctx;
+  return self->rx_callback(transfer);
 }
 
-int SoapyAirspyHF::rx_callback(airspyhf_transfer_t *transfer)
-{
+int SoapyAirspyHF::rx_callback(airspyhf_transfer_t *transfer) {
 
-    const uint32_t timeout_us = 500000; // 500ms
+  const uint32_t timeout_us = 500'000; // 500ms
 
-    const auto written = ringbuffer_.write_at_least
-        (transfer->sample_count,
-         std::chrono::microseconds(timeout_us),
-         [&](airspyhf_complex_float_t* begin, [[maybe_unused]] const uint32_t available) {
-             // Copy samples to ringbufer
-             std::copy(transfer->samples,
-                       transfer->samples + transfer->sample_count,
-                       begin);
+  const auto written = ringbuffer_.write_at_least(
+      static_cast<size_t>(transfer->sample_count),
+      std::chrono::microseconds(timeout_us),
+      [&](airspyhf_complex_float_t *begin,
+          [[maybe_unused]] const uint32_t available) {
+        // Copy samples to ringbufer
+        std::copy(transfer->samples, transfer->samples + transfer->sample_count,
+                  begin);
 
-             return transfer->sample_count;
-         });
+        return transfer->sample_count;
+      });
 
-    // Count ticks
-    ticks_.fetch_add(transfer->sample_count, std::memory_order_release);
+  // Count ticks
+  ticks_.fetch_add(transfer->sample_count, std::memory_order_release);
 
-    if(written < 0) {
-        SoapySDR::logf(SOAPY_SDR_INFO, "SoapyAirspyHF::rx_callback: ringbuffer write timeout");
-        return 0;
-    }
+  if (written < 0) {
+    SoapySDR::logf(SOAPY_SDR_INFO,
+                   "SoapyAirspyHF::rx_callback: ringbuffer write timeout");
+    return 0;
+  }
 
-    return 0; // anything else is an error.
+  return 0; // anything else is an error.
 }
 
 /*******************************************************************
  * Stream API
  ******************************************************************/
 
-SoapySDR::Stream *SoapyAirspyHF::setupStream(
-        const int direction,
-        const std::string &format,
-        const std::vector<size_t> &channels,
-        const SoapySDR::Kwargs &args)
-{
-    if(direction != SOAPY_SDR_RX or channels.size() != 1 or channels.at(0) != 0) {
-        SoapySDR::logf(SOAPY_SDR_INFO, "SoapyAirspyHF::setupStream(%d, %s, %d, %d) invalid channel",
-                       direction, format.c_str(), channels.size(), channels.at(0));
-    }
+SoapySDR::Stream *
+SoapyAirspyHF::setupStream(const int direction, const std::string &format,
+                           const std::vector<size_t> &channels,
+                           const SoapySDR::Kwargs &args) {
 
-    // Check the channel configuration
-    if (channels.size() > 1 or (channels.size() > 0 and channels.at(0) != 0)) {
-        throw std::runtime_error("setupStream invalid channel selection");
-    }
+  (void)args; // Currently unused
 
-    std::vector<std::string> sources = SoapySDR::ConverterRegistry::listSourceFormats(format);
+  if (direction != SOAPY_SDR_RX or channels.size() != 1 or
+      channels.at(0) != 0) {
+    SoapySDR::logf(SOAPY_SDR_INFO,
+                   "SoapyAirspyHF::setupStream(%d, %s, %d, %d) invalid channel",
+                   direction, format.c_str(), channels.size(), channels.at(0));
+  }
 
-    if (std::find(sources.begin(), sources.end(), SOAPY_NATIVE_FORMAT) == sources.end()) {
-        throw std::runtime_error(
-                "setupStream invalid format '" + format + "'.");
-    }
+  // Check the channel configuration
+  if (channels.size() > 1 or (channels.size() > 0 and channels.at(0) != 0)) {
+    throw std::runtime_error("setupStream invalid channel selection");
+  }
 
-    // Find converter functinon
-    converterFunction_ = SoapySDR::ConverterRegistry::getFunction(SOAPY_NATIVE_FORMAT, format, SoapySDR::ConverterRegistry::GENERIC);
+  std::vector<std::string> sources =
+      SoapySDR::ConverterRegistry::listSourceFormats(format);
 
-    SoapySDR::logf(SOAPY_SDR_INFO, "setupStream: format=%s", format.c_str());
+  if (std::find(sources.begin(), sources.end(), SOAPY_NATIVE_FORMAT) ==
+      sources.end()) {
+    throw std::runtime_error("setupStream invalid format '" + format + "'.");
+  }
 
-    return (SoapySDR::Stream*) this;
+  // Find converter functinon
+  converterFunction_ = SoapySDR::ConverterRegistry::getFunction(
+      SOAPY_NATIVE_FORMAT, format, SoapySDR::ConverterRegistry::GENERIC);
+
+  SoapySDR::logf(SOAPY_SDR_INFO, "setupStream: format=%s", format.c_str());
+
+  return (SoapySDR::Stream *)this;
 }
 
-void SoapyAirspyHF::closeStream(SoapySDR::Stream *stream)
-{
-    (void) stream;
-}
+void SoapyAirspyHF::closeStream(SoapySDR::Stream *stream) { (void)stream; }
 
 size_t SoapyAirspyHF::getStreamMTU(SoapySDR::Stream *stream) const {
-    // This value is a constant in the driver
-    return airspyhf_get_output_size(dev_);
+
+  (void)stream; // Currently unused
+
+  // This value is a constant in the driver
+  return static_cast<size_t>(airspyhf_get_output_size(dev_));
 }
 
-int SoapyAirspyHF::activateStream(SoapySDR::Stream *stream,
-                                  const int flags,
+int SoapyAirspyHF::activateStream(SoapySDR::Stream *stream, const int flags,
                                   const long long timeNs,
-                                  const size_t numElems)
-{
-    int ret;
+                                  const size_t numElems) {
 
-    if (flags != 0) {
-        SoapySDR::logf(SOAPY_SDR_DEBUG, "activateStream: flags not supported");
-    }
+  (void)stream; // TODO: use stream
 
-    // Clear ringbuffer
-    ringbuffer_.clear();
+  int ret = 0;
 
-    // Reset ticks
-    ticks_ = 0;
+  if (flags != 0) {
+    SoapySDR::logf(SOAPY_SDR_DEBUG, "activateStream: flags not supported");
+  }
 
-    // Start the stream
-    ret = airspyhf_start(dev_, &rx_callback_, (void *)this);
-    if (ret != AIRSPYHF_SUCCESS) {
-        SoapySDR::logf(SOAPY_SDR_ERROR, "activateStream: airspyhf_start failed: %d", ret);
-        return SOAPY_SDR_STREAM_ERROR;
-    }
+  // Clear ringbuffer
+  ringbuffer_.clear();
 
-    SoapySDR::logf(SOAPY_SDR_DEBUG, "activateStream: flags=%d, timeNs=%lld, numElems=%d", flags, timeNs, numElems);
+  // Reset ticks
+  ticks_ = 0;
 
-    return 0;
+  // Start the stream
+  ret = airspyhf_start(dev_, &rx_callback_, (void *)this);
+  if (ret != AIRSPYHF_SUCCESS) {
+    SoapySDR::logf(SOAPY_SDR_ERROR, "activateStream: airspyhf_start failed: %d",
+                   ret);
+    return SOAPY_SDR_STREAM_ERROR;
+  }
+
+  SoapySDR::logf(SOAPY_SDR_DEBUG,
+                 "activateStream: flags=%d, timeNs=%lld, numElems=%d", flags,
+                 timeNs, numElems);
+
+  return 0;
 }
 
-int SoapyAirspyHF::deactivateStream(SoapySDR::Stream *stream, const int flags, const long long timeNs)
-{
-    int ret;
+int SoapyAirspyHF::deactivateStream(SoapySDR::Stream *stream, const int flags,
+                                    const long long timeNs) {
 
-    SoapySDR::logf(SOAPY_SDR_DEBUG, "deactivateStream: flags=%d, timeNs=%lld", flags, timeNs);
+  (void)stream; // TODO: use stream
 
-    if (flags != 0) {
-        SoapySDR::logf(SOAPY_SDR_DEBUG, "deactivateStream: flags not supported");
-    }
+  int ret = 0;
 
-    // Stop streaming
-    ret = airspyhf_stop(dev_);
-    if (ret != AIRSPYHF_SUCCESS) {
-        SoapySDR::logf(SOAPY_SDR_ERROR, "deactivateStream: airspyhf_stop() failed: %d", ret);
-        return SOAPY_SDR_STREAM_ERROR;
-    }
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "deactivateStream: flags=%d, timeNs=%lld",
+                 flags, timeNs);
 
-    return 0;
+  if (flags != 0) {
+    SoapySDR::logf(SOAPY_SDR_DEBUG, "deactivateStream: flags not supported");
+  }
+
+  // Stop streaming
+  ret = airspyhf_stop(dev_);
+  if (ret != AIRSPYHF_SUCCESS) {
+    SoapySDR::logf(SOAPY_SDR_ERROR,
+                   "deactivateStream: airspyhf_stop() failed: %d", ret);
+    return SOAPY_SDR_STREAM_ERROR;
+  }
+
+  return 0;
 }
 
-int SoapyAirspyHF::readStream(SoapySDR::Stream *stream,
-                              void * const *buffs,
-                              const size_t numElems,
-                              int &flags,
-                              long long &timeNs,
-                              const long timeoutUs) {
+int SoapyAirspyHF::readStream(SoapySDR::Stream *stream, void *const *buffs,
+                              const size_t numElems, int &flags,
+                              long long &timeNs, const long timeoutUs) {
 
-    if(flags != 0) {
-        SoapySDR::logf(SOAPY_SDR_DEBUG, "SoapyAirspyHF::readStream: flags not supported");
-        flags = 0;
-    }
+  // Flags are not used by this driver
+  flags = 0;
 
-    // Convert either requested number of elements or the MTU.
-    const auto to_convert = std::min(numElems, getStreamMTU(stream));
+  // Convert either requested number of elements or the MTU.
+  const auto to_convert = std::min(numElems, getStreamMTU(stream));
 
-    const auto converted = ringbuffer_.read_at_least
-        (to_convert,
-         std::chrono::microseconds(timeoutUs),
-         [&](const airspyhf_complex_float_t* begin, [[maybe_unused]] const uint32_t available) {
-             // Convert samples to output buffer
-             converterFunction_(begin,
-                                buffs[0],
-                                to_convert,
-                                1.0);
+  const auto converted = ringbuffer_.read_at_least(
+      to_convert, std::chrono::microseconds(timeoutUs),
+      [&](const airspyhf_complex_float_t *begin,
+          [[maybe_unused]] const uint32_t available) {
+        // Convert samples to output buffer
+        converterFunction_(begin, buffs[0], to_convert, 1.0);
 
-             // Consume from ringbuffer
-             return to_convert;
-         });
+        // Consume from ringbuffer
+        return to_convert;
+      });
 
-    // Count ticks to return time
-    timeNs = SoapySDR::ticksToTimeNs(ticks_.load(std::memory_order_acquire),
-                                     sampleRate_);
+  // Count ticks to return time
+  timeNs = SoapySDR::ticksToTimeNs(ticks_.load(std::memory_order_acquire),
+                                   sampleRate_);
 
-    if(converted < 0) {
-        SoapySDR::logf(SOAPY_SDR_INFO, "readStream: ringbuffer read timeout.");
-        return SOAPY_SDR_TIMEOUT;
-    }
+  if (converted < 0) {
+    SoapySDR::logf(SOAPY_SDR_INFO, "readStream: ringbuffer read timeout.");
+    return SOAPY_SDR_TIMEOUT;
+  }
 
-    return converted;
+  return static_cast<int>(converted);
 }
