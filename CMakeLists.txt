@@ -7,7 +7,6 @@ cmake_minimum_required(VERSION 3.5)
 project(SoapyAirspyHF CXX)
 
 # This module needs c++17
-# Seems that SoapySDR 0.7 overrides this to C++11.
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -37,9 +36,14 @@ endif ()
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR})
 
-find_package(LibAIRSPYHF)
+# Find libairspyhf with pkg_config
+# https://github.com/airspy/airspyhf
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(AIRSPYHF REQUIRED IMPORTED_TARGET libairspyhf)
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${LIBAIRSPYHF_INCLUDE_DIRS})
+find_package(fmt REQUIRED)
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${AIRSPYHF_INCLUDE_DIRS})
 
 list(APPEND AIRSPYHF_LIBS ${LIBAIRSPYHF_LIBRARIES})
 
@@ -52,7 +56,8 @@ SOAPY_SDR_MODULE_UTIL(
   Streaming.cpp
   RingBuffer.hpp
   LIBRARIES
-  ${AIRSPYHF_LIBS}
+  PkgConfig::AIRSPYHF
+  fmt::fmt
 )
 
 ########################################################################

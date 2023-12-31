@@ -29,11 +29,13 @@
 #include <SoapySDR/Device.hpp>
 #include <SoapySDR/Logger.hpp>
 #include <SoapySDR/Types.hpp>
+#include <SoapySDR/Time.hpp>
 
 #include <algorithm>
 #include <atomic>
 #include <complex>
 #include <cstring>
+#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -43,11 +45,53 @@
 
 #define MAX_DEVICES 32
 
+class SoapySDR::Stream {
+  airspyhf_device_t *device_;
+  double samplerate_;
+  SoapySDR::ConverterRegistry::ConverterFunction converterFunction_;
+  size_t mtu_;
+  RingBuffer<airspyhf_complex_float_t> ringbuffer_;
+
+public:
+  std::atomic<long long> ticks_;
+
+  // Use MTU
+  Stream(airspyhf_device_t *device, double samplerate,
+         SoapySDR::ConverterRegistry::ConverterFunction converterFunction,
+         size_t mtu)
+      : device_(device), samplerate_(samplerate),
+        converterFunction_(converterFunction), mtu_(mtu),
+        ringbuffer_(8 * 2048){}; // TODO: make ringbuffer size a function of sample rate=?
+
+  virtual ~Stream() {
+    // Stop streaming if stream is dropped.
+    airspyhf_stop(device_);
+  };
+
+  void addTicks(long long ticks) {
+    ticks_.fetch_add(ticks, std::memory_order_release);
+  }
+
+  long long ticks() const { return ticks_.load(std::memory_order_acquire); }
+
+  long long timeNs() const {
+    return SoapySDR::ticksToTimeNs(ticks(), samplerate_);
+  }
+
+  RingBuffer<airspyhf_complex_float_t> &ringbuffer() { return ringbuffer_; };
+  airspyhf_device_t *device() const { return device_; };
+  double samplerate() const { return samplerate_; };
+  SoapySDR::ConverterRegistry::ConverterFunction converter() const {
+    return converterFunction_;
+  };
+  size_t MTU() const { return mtu_; };
+};
+
 class SoapyAirspyHF : public SoapySDR::Device {
 private:
   // Device handle
   uint64_t serial_;
-  airspyhf_device_t *dev_;
+  airspyhf_device_t *device_;
 
   uint32_t sampleRate_;
   uint32_t centerFrequency_;
@@ -60,13 +104,8 @@ private:
   double frequencyCorrection_;
   std::complex<double> iqBalance_;
 
-  SoapySDR::ConverterRegistry::ConverterFunction converterFunction_;
-
-  std::atomic<long long> ticks_;
-  RingBuffer<airspyhf_complex_float_t> ringbuffer_;
-
-  friend int rx_callback_(airspyhf_transfer_t *transfer);
-  int rx_callback(airspyhf_transfer_t *t);
+  // Current stream handle
+  std::unique_ptr<SoapySDR::Stream> stream_;
 
 public:
   SoapyAirspyHF(const SoapySDR::Kwargs &args);

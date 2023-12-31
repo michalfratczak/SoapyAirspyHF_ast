@@ -26,9 +26,9 @@
 
 #include "SoapyAirspyHF.hpp"
 
+// Driver constructor
 SoapyAirspyHF::SoapyAirspyHF(const SoapySDR::Kwargs &args)
-    : dev_(nullptr), sampleRate_(0), frequencyCorrection_(0), iqBalance_(0),
-      ringbuffer_(8 * 2048) // Keep 8 buffers in the ringbuffer
+    : device_(nullptr), sampleRate_(0), frequencyCorrection_(0), iqBalance_(0)
 {
 
   int ret = 0;
@@ -52,7 +52,7 @@ SoapyAirspyHF::SoapyAirspyHF(const SoapySDR::Kwargs &args)
     // Serial to hex
     serialstr << std::hex << serial_;
     // Open device
-    ret = airspyhf_open_sn(&dev_, serial_);
+    ret = airspyhf_open_sn(&device_, serial_);
     if (ret != AIRSPYHF_SUCCESS) {
       SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_open_sn() failed: (%d)", ret);
       throw std::runtime_error("Unable to open AirspyHF device with S/N " +
@@ -63,7 +63,7 @@ SoapyAirspyHF::SoapyAirspyHF(const SoapySDR::Kwargs &args)
                    serialstr.str().c_str());
   } else {
     // No serial, open first device
-    ret = airspyhf_open(&dev_);
+    ret = airspyhf_open(&device_);
     if (ret != AIRSPYHF_SUCCESS) {
       throw std::runtime_error("Unable to open AirspyHF device");
     }
@@ -80,7 +80,7 @@ SoapyAirspyHF::SoapyAirspyHF(const SoapySDR::Kwargs &args)
   setGainMode(SOAPY_SDR_RX, 0, false);
 
   // Enables/Disables the IQ Correction, IF shift and Fine Tuning.
-  ret = airspyhf_set_lib_dsp(dev_, 1);
+  ret = airspyhf_set_lib_dsp(device_, 1);
   if (ret != AIRSPYHF_SUCCESS) {
     SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_lib_dsp() failed: (%d)", ret);
   }
@@ -97,7 +97,7 @@ SoapyAirspyHF::SoapyAirspyHF(const SoapySDR::Kwargs &args)
 SoapyAirspyHF::~SoapyAirspyHF(void) {
   int ret;
 
-  ret = airspyhf_close(dev_);
+  ret = airspyhf_close(device_);
   if (ret != AIRSPYHF_SUCCESS) {
     SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_close() failed: %d", ret);
   }
@@ -217,7 +217,7 @@ void SoapyAirspyHF::setIQBalance(const int direction, const size_t channel,
 
   if (iqBalance_ != balance) {
     // TODO
-    ret = airspyhf_set_optimal_iq_correction_point(dev_, 0);
+    ret = airspyhf_set_optimal_iq_correction_point(device_, 0);
     if (ret != AIRSPYHF_SUCCESS) {
       SoapySDR::logf(SOAPY_SDR_ERROR,
                      "airspyhf_set_optimal_iq_correction_point() failed: %d",
@@ -271,7 +271,7 @@ void SoapyAirspyHF::setFrequencyCorrection(const int direction,
   const int32_t correction_ppb = static_cast<int>(std::round(value * 1000));
 
   if (frequencyCorrection_ != correction_ppb) {
-    int ret = airspyhf_set_calibration(dev_, correction_ppb);
+    int ret = airspyhf_set_calibration(device_, correction_ppb);
     if (ret != AIRSPYHF_SUCCESS) {
       SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_calibration() failed: %d",
                      ret);
@@ -334,7 +334,7 @@ void SoapyAirspyHF::setGainMode(const int direction, const size_t channel,
   if (agcEnabled_ != automatic) {
     SoapySDR::logf(SOAPY_SDR_DEBUG, "setGainMode(%d, %d, %d)", direction,
                    channel, automatic);
-    int ret = airspyhf_set_hf_agc(dev_, automatic);
+    int ret = airspyhf_set_hf_agc(device_, automatic);
     if (ret != AIRSPYHF_SUCCESS) {
       SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_hf_att() failed: %d", ret);
     } else {
@@ -407,7 +407,7 @@ void SoapyAirspyHF::setGain(const int direction, const size_t channel,
   int ret = 0;
 
   if (name == "LNA") {
-    ret = airspyhf_set_hf_lna(dev_, value > 3 ? 1 : 0);
+    ret = airspyhf_set_hf_lna(device_, value > 3 ? 1 : 0);
     if (ret != AIRSPYHF_SUCCESS) {
       SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_hf_lna() failed: %d", ret);
     } else {
@@ -419,7 +419,7 @@ void SoapyAirspyHF::setGain(const int direction, const size_t channel,
     SoapySDR::logf(SOAPY_SDR_DEBUG, "setGain(%d, %d, %s, %f) -> %d", direction,
                    channel, name.c_str(), value, att);
 
-    ret = airspyhf_set_hf_att(dev_, att);
+    ret = airspyhf_set_hf_att(device_, att);
 
     if (ret != AIRSPYHF_SUCCESS) {
       SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_hf_att() failed: %d", ret);
@@ -457,7 +457,7 @@ void SoapyAirspyHF::setFrequency(const int direction, const size_t channel,
   SoapySDR::logf(SOAPY_SDR_DEBUG, "setFrequency(%d, %d, %s, %f)", direction,
                  channel, name.c_str(), frequency);
 
-  ret = airspyhf_set_freq(dev_, centerFrequency_);
+  ret = airspyhf_set_freq(device_, centerFrequency_);
   if (ret != AIRSPYHF_SUCCESS) {
     SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_freq() failed: %d", ret);
   }
@@ -539,7 +539,7 @@ void SoapyAirspyHF::setSampleRate(const int direction, const size_t channel,
 
   sampleRate_ = static_cast<uint32_t>(rate);
 
-  ret = airspyhf_set_samplerate(dev_, sampleRate_);
+  ret = airspyhf_set_samplerate(device_, sampleRate_);
   if (ret != AIRSPYHF_SUCCESS) {
     SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_samplerate() failed: %d",
                    ret);
@@ -572,7 +572,7 @@ std::vector<double> SoapyAirspyHF::listSampleRates(const int direction,
   }
 
   uint32_t numRates = 0;
-  ret = airspyhf_get_samplerates(dev_, &numRates, 0);
+  ret = airspyhf_get_samplerates(device_, &numRates, 0);
   if (ret != AIRSPYHF_SUCCESS) {
     SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_get_samplerates() failed: %d",
                    ret);
@@ -582,7 +582,7 @@ std::vector<double> SoapyAirspyHF::listSampleRates(const int direction,
   std::vector<uint32_t> samplerates;
   samplerates.resize(numRates);
 
-  ret = airspyhf_get_samplerates(dev_, samplerates.data(), numRates);
+  ret = airspyhf_get_samplerates(device_, samplerates.data(), numRates);
   if (ret != AIRSPYHF_SUCCESS) {
     SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_get_samplerates() failed: %d",
                    ret);
@@ -657,7 +657,7 @@ void SoapyAirspyHF::writeSetting(const std::string &key,
     bool enable = (value == "true");
 
     // Enables/Disables the IQ Correction, IF shift and Fine Tuning.
-    ret = airspyhf_set_lib_dsp(dev_, enable);
+    ret = airspyhf_set_lib_dsp(device_, enable);
     if (ret != AIRSPYHF_SUCCESS) {
       SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_lib_dsp() failed: (%d)",
                      ret);
