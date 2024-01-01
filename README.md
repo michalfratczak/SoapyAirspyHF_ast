@@ -13,7 +13,7 @@ I have tested this with GQRX and OpenWebRX with good results.
 
 ## Building
 
-Make sure you have SoapySDR installed.
+Make sure you have SoapySDR and libfmt-dev installed.
 
 To build and also create `compile_commands.json`:
 
@@ -44,7 +44,9 @@ Tested with this version of SoapySDR:
 
 ## TODO
 
-* linting
+* More testing.
+* More linting.
+* CI/CD.
 
 ## Support me
 

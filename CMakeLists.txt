@@ -5,15 +5,24 @@
 cmake_minimum_required(VERSION 3.5)
 
 project(SoapyAirspyHF CXX)
+enable_testing()
+
+# Export compile_commands.json by default.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # This module needs c++17
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Create a compile_commands.json file for use with clang tooling
-set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
+#select the release build type by default to get optimization flags
+if(NOT CMAKE_BUILD_TYPE)
+   set(CMAKE_BUILD_TYPE "Release")
+   message(STATUS "Build type not specified: defaulting to release.")
+endif(NOT CMAKE_BUILD_TYPE)
+set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE} CACHE STRING "")
 
+# Add strict compiler flags.
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(
     -Wall
@@ -25,13 +34,14 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     -Wcast-align
     -Wconversion
     -Wstrict-aliasing=2
-    # -faligned-new # allow alignas in C++11.
   )
 endif()
 
-find_package(SoapySDR "0.7.0" NO_MODULE REQUIRED)
+find_package(SoapySDR CONFIG)
+
 if (NOT SoapySDR_FOUND)
-    message(FATAL_ERROR "Soapy SDR development files not found...")
+    message(WARNING "SoapySDR development files not found - skipping support")
+    return()
 endif ()
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR})
@@ -59,14 +69,3 @@ SOAPY_SDR_MODULE_UTIL(
   PkgConfig::AIRSPYHF
   fmt::fmt
 )
-
-########################################################################
-# uninstall target
-########################################################################
-add_custom_target(uninstall
-    "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake")
-
-  configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
-    IMMEDIATE @ONLY)
