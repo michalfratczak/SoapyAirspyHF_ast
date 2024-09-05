@@ -34,6 +34,8 @@
 #include <libairspyhf/airspyhf.h>
 #include <memory>
 
+#include <cassert>
+
 #define AIRSPYHF_NATIVE_FORMAT SOAPY_SDR_CF32
 
 std::vector<std::string>
@@ -125,6 +127,11 @@ SoapyAirspyHF::setupStream(const int direction, const std::string &format,
 
   (void)args; // Currently unused
 
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "setupStream(%d, %s, %d, %f)", direction,
+                 format.c_str(), channels.size(), sampleRate_);
+
+  assert(sampleRate_ > 0);
+
   if (direction != SOAPY_SDR_RX or channels.size() != 1 or
       channels.at(0) != 0) {
     SoapySDR::logf(SOAPY_SDR_INFO,
@@ -188,7 +195,7 @@ int SoapyAirspyHF::activateStream(SoapySDR::Stream *stream, const int flags,
   stream->ticks_ = 0;
 
   // Start the stream
-  ret = airspyhf_start(device_, &rx_callback_, (void *)stream);
+  ret = airspyhf_start(device_, &rx_callback_, static_cast<void *>(stream));
   if (ret != AIRSPYHF_SUCCESS) {
     SoapySDR::logf(SOAPY_SDR_ERROR, "activateStream: airspyhf_start failed: %d",
                    ret);

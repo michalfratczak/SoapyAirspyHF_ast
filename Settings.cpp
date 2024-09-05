@@ -25,15 +25,19 @@
  */
 
 #include "SoapyAirspyHF.hpp"
+#include <airspyhf.h>
+#include <algorithm>
 
 // Driver constructor
 SoapyAirspyHF::SoapyAirspyHF(const SoapySDR::Kwargs &args)
-    : device_(nullptr), sampleRate_(0), frequencyCorrection_(0), iqBalance_(0)
-{
+    : device_(nullptr), sampleRate_(0), frequencyCorrection_(0),
+      enableDSP_(true), agcEnabled_(true), lnaGain_(0), hfAttenuation_(0),
+      centerFrequency_(0), serial_(0), iqBalance_(0) {
+
+  // TODO: How can I control this.
+  SoapySDR_setLogLevel(SoapySDR::LogLevel::SOAPY_SDR_DEBUG);
 
   int ret = 0;
-
-  SoapySDR_setLogLevel(SoapySDR::LogLevel::SOAPY_SDR_DEBUG);
 
   if (args.count("serial")) {
     // For storing serial as hex
@@ -69,28 +73,36 @@ SoapyAirspyHF::SoapyAirspyHF(const SoapySDR::Kwargs &args)
     }
   }
 
-  // Set first sample rate as default
-  auto const &rates = listSampleRates(SOAPY_SDR_RX, 0);
+  // TODO: move to some init function
+  std::uint32_t num_rates = 0;
+  ret = airspyhf_get_samplerates(device_, &num_rates, 0);
+  if (ret != AIRSPYHF_SUCCESS) {
+    SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_get_samplerates() failed: (%d)",
+                  ret);
+  }
+  std::vector<uint32_t> rates(num_rates, 0);
+  ret = airspyhf_get_samplerates(device_, rates.data(), num_rates);
+  if (ret != AIRSPYHF_SUCCESS) {
+    SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_get_samplerates() failed: (%d)",
+                  ret);
+  }
 
-  setSampleRate(SOAPY_SDR_RX, 0, rates.front());
-  setFrequency(SOAPY_SDR_RX, 0, "RF", 7000000);
-  // Default to no gain
-  setGain(SOAPY_SDR_RX, 0, 0);
-  // And no AGC
-  setGainMode(SOAPY_SDR_RX, 0, false);
+  // Sort smallest first
+  std::sort(rates.begin(), rates.end());
+
+  // Set first sample rate as default
+  ret = airspyhf_set_samplerate(device_, rates.front());
+  if (ret != AIRSPYHF_SUCCESS) {
+    SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_samplerate() failed: (%d)",
+                  ret);
+  }
+  // Store
+  sampleRate_ = rates.front();
 
   // Enables/Disables the IQ Correction, IF shift and Fine Tuning.
   ret = airspyhf_set_lib_dsp(device_, 1);
   if (ret != AIRSPYHF_SUCCESS) {
     SoapySDR_logf(SOAPY_SDR_ERROR, "airspyhf_set_lib_dsp() failed: (%d)", ret);
-  }
-
-  // Apply arguments to settings when they match
-  for (const auto &info : getSettingInfo()) {
-    const auto it = args.find(info.key);
-    if (it != args.end()) {
-      writeSetting(it->first, it->second);
-    }
   }
 }
 
@@ -207,8 +219,6 @@ bool SoapyAirspyHF::hasIQBalance(const int direction,
 void SoapyAirspyHF::setIQBalance(const int direction, const size_t channel,
                                  const std::complex<double> &balance) {
 
-  int ret = 0;
-
   if (direction != SOAPY_SDR_RX or channel != 0) {
     SoapySDR::logf(SOAPY_SDR_ERROR, "setIQBalance(%d, %d) not supported.",
                    direction, channel);
@@ -217,7 +227,7 @@ void SoapyAirspyHF::setIQBalance(const int direction, const size_t channel,
 
   if (iqBalance_ != balance) {
     // TODO
-    ret = airspyhf_set_optimal_iq_correction_point(device_, 0);
+    const int ret = airspyhf_set_optimal_iq_correction_point(device_, 0);
     if (ret != AIRSPYHF_SUCCESS) {
       SoapySDR::logf(SOAPY_SDR_ERROR,
                      "airspyhf_set_optimal_iq_correction_point() failed: %d",
@@ -404,10 +414,8 @@ void SoapyAirspyHF::setGain(const int direction, const size_t channel,
     return;
   }
 
-  int ret = 0;
-
   if (name == "LNA") {
-    ret = airspyhf_set_hf_lna(device_, value > 3 ? 1 : 0);
+    const int ret = airspyhf_set_hf_lna(device_, value > 3 ? 1 : 0);
     if (ret != AIRSPYHF_SUCCESS) {
       SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_hf_lna() failed: %d", ret);
     } else {
@@ -419,7 +427,7 @@ void SoapyAirspyHF::setGain(const int direction, const size_t channel,
     SoapySDR::logf(SOAPY_SDR_DEBUG, "setGain(%d, %d, %s, %f) -> %d", direction,
                    channel, name.c_str(), value, att);
 
-    ret = airspyhf_set_hf_att(device_, att);
+    const int ret = airspyhf_set_hf_att(device_, att);
 
     if (ret != AIRSPYHF_SUCCESS) {
       SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_hf_att() failed: %d", ret);
@@ -531,6 +539,10 @@ void SoapyAirspyHF::setSampleRate(const int direction, const size_t channel,
                                   const double rate) {
   int ret = 0;
 
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "setSampleRate(%d, %d, %f)", direction,
+                 channel, rate);
+
   if (direction != SOAPY_SDR_RX or channel != 0) {
     SoapySDR::logf(SOAPY_SDR_ERROR, "setSampleRate(%d, %d, %f) not supported.",
                    direction, channel, rate);
@@ -550,6 +562,9 @@ void SoapyAirspyHF::setSampleRate(const int direction, const size_t channel,
 double SoapyAirspyHF::getSampleRate(const int direction,
                                     const size_t channel) const {
 
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "getSampleRate(%d, %d)", direction, channel);
+
   if (direction != SOAPY_SDR_RX or channel != 0) {
     SoapySDR::logf(SOAPY_SDR_ERROR, "getSampleRate(%d, %d) not supported.",
                    direction, channel);
@@ -561,9 +576,12 @@ double SoapyAirspyHF::getSampleRate(const int direction,
 
 std::vector<double> SoapyAirspyHF::listSampleRates(const int direction,
                                                    const size_t channel) const {
-  int ret = 0;
 
   std::vector<double> results;
+
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "listSampleRates(%d, %d)", direction,
+                 channel);
 
   if (direction != SOAPY_SDR_RX or channel != 0) {
     SoapySDR::logf(SOAPY_SDR_ERROR, "listSampleRates(%d, %d) not supported.",
@@ -571,16 +589,17 @@ std::vector<double> SoapyAirspyHF::listSampleRates(const int direction,
     return results;
   }
 
+  // Get number of sample rates
   uint32_t numRates = 0;
-  ret = airspyhf_get_samplerates(device_, &numRates, 0);
+  int ret = airspyhf_get_samplerates(device_, &numRates, 0);
   if (ret != AIRSPYHF_SUCCESS) {
     SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_get_samplerates() failed: %d",
                    ret);
     return results;
   }
 
-  std::vector<uint32_t> samplerates;
-  samplerates.resize(numRates);
+  // Get sample rates
+  std::vector<uint32_t> samplerates(numRates, 0);
 
   ret = airspyhf_get_samplerates(device_, samplerates.data(), numRates);
   if (ret != AIRSPYHF_SUCCESS) {
@@ -592,9 +611,9 @@ std::vector<double> SoapyAirspyHF::listSampleRates(const int direction,
   // Sort to make short they are in order
   std::sort(samplerates.begin(), samplerates.end());
 
-  for (const auto &samplerate : samplerates) {
-    results.push_back(samplerate);
-  }
+  // Use std::copy instead of loop
+  std::copy(samplerates.begin(), samplerates.end(),
+            std::back_inserter(results));
 
   return results;
 }
@@ -607,6 +626,9 @@ void SoapyAirspyHF::setBandwidth(const int direction, const size_t channel,
 
 double SoapyAirspyHF::getBandwidth(const int direction,
                                    const size_t channel) const {
+
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "getBandwidth(%d, %d)", direction, channel);
 
   if (direction != SOAPY_SDR_RX or channel != 0) {
     SoapySDR::logf(SOAPY_SDR_ERROR, "getBandwidth(%d, %d) not supported.",
@@ -622,11 +644,14 @@ std::vector<double> SoapyAirspyHF::listBandwidths(const int direction,
                                                   const size_t channel) const {
   std::vector<double> results;
 
-  for (const auto &samplerate : listSampleRates(direction, channel)) {
-    // Reasoable estimate
-    // TODO: maybe cache sample rates?
-    results.push_back(0.9 * samplerate);
-  }
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "listBandwidths(%d, %d)", direction, channel);
+
+  const auto sample_rates = listSampleRates(direction, channel);
+
+  std::transform(sample_rates.begin(), sample_rates.end(),
+                 std::back_inserter(results),
+                 [](const double rate) { return 0.9 * rate; });
 
   return results;
 }
@@ -636,7 +661,11 @@ std::vector<double> SoapyAirspyHF::listBandwidths(const int direction,
  ******************************************************************/
 
 SoapySDR::ArgInfoList SoapyAirspyHF::getSettingInfo(void) const {
+
   SoapySDR::ArgInfoList setArgs;
+
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "getSettingInfo()");
 
   // Enable DSP in library. TODO. make this optional
   SoapySDR::ArgInfo enableDSPArg;
@@ -651,13 +680,16 @@ SoapySDR::ArgInfoList SoapyAirspyHF::getSettingInfo(void) const {
 
 void SoapyAirspyHF::writeSetting(const std::string &key,
                                  const std::string &value) {
-  int ret;
+
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "writeSetting(%s, %s)", key.c_str(),
+                 value.c_str());
 
   if (key == "dsp") {
     bool enable = (value == "true");
 
     // Enables/Disables the IQ Correction, IF shift and Fine Tuning.
-    ret = airspyhf_set_lib_dsp(device_, enable);
+    const int ret = airspyhf_set_lib_dsp(device_, enable);
     if (ret != AIRSPYHF_SUCCESS) {
       SoapySDR::logf(SOAPY_SDR_ERROR, "airspyhf_set_lib_dsp() failed: (%d)",
                      ret);
@@ -674,6 +706,10 @@ void SoapyAirspyHF::writeSetting(const std::string &key,
 }
 
 std::string SoapyAirspyHF::readSetting(const std::string &key) const {
+
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "readSetting(%s)", key.c_str());
+
   if (key == "dsp") {
     return enableDSP_ ? "true" : "false";
   } else {

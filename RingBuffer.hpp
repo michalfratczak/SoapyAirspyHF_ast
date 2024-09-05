@@ -1,13 +1,8 @@
+// Copyright 2024 SM6WJM
+
 #pragma once
 
-#include <cstddef>
-#include <cstdint>
-#include <sys/mman.h>
-
-#include <unistd.h>
-
 #include <atomic>
-#include <cassert>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
@@ -15,6 +10,11 @@
 #include <iostream>
 #include <mutex>
 #include <stdexcept>
+
+#include <cstddef>
+#include <cstdint>
+#include <sys/mman.h>
+#include <unistd.h>
 
 // The Cortex-A7 in the RPi3 has a 64-byte cache line size (L2 cache)
 #define cacheline_aligned alignas(64)
@@ -69,7 +69,7 @@ template <typename T> class RingBuffer {
     // be reused.
     int mem_fd = memfd_create("soapy_ring_buffer", 0);
     if (mem_fd == -1) {
-      // TODO: add excact error
+      // TODO: add exact error
       throw std::runtime_error("Could not create memfd: " +
                                std::string(strerror(errno)));
     }
@@ -101,8 +101,8 @@ template <typename T> class RingBuffer {
 
     // Map the memfd to the second half of the buffer
     // The double cast is because of pointer arithmetic
-    // TODO: fix this cast into a macro or something
-    void *addr_hint_2 = (void *)((uint8_t *)buffer_1 + size);
+    void *addr_hint_2 =
+        static_cast<void *>(static_cast<uint8_t *>(buffer_1) + size);
     const void *buffer_2 = mmap(addr_hint_2, size, PROT_READ | PROT_WRITE,
                                 MAP_SHARED | MAP_FIXED, mem_fd, 0);
 
@@ -254,7 +254,7 @@ public:
     }
   }
 
-  RingBuffer(size_t capacity)
+  explicit RingBuffer(size_t capacity)
       : buffer_(map_mirror(capacity * sizeof(T))), capacity_(capacity) {}
 
   virtual ~RingBuffer() { unmap_mirror(buffer_, capacity_ * sizeof(T)); };

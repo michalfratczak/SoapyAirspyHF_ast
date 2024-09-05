@@ -2,6 +2,8 @@
 # Build Soapy SDR support module for Airspy Devices
 ###################################################
 
+# Copyright 2024 SM6WJM
+
 cmake_minimum_required(VERSION 3.5)
 
 project(SoapyAirspyHF CXX)

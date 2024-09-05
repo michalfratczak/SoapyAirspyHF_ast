@@ -28,8 +28,8 @@
 #include <SoapySDR/ConverterRegistry.hpp>
 #include <SoapySDR/Device.hpp>
 #include <SoapySDR/Logger.hpp>
-#include <SoapySDR/Types.hpp>
 #include <SoapySDR/Time.hpp>
+#include <SoapySDR/Types.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -45,6 +45,7 @@
 
 #define MAX_DEVICES 32
 
+// Class to hold the stream data
 class SoapySDR::Stream {
   airspyhf_device_t *device_;
   double samplerate_;
@@ -61,7 +62,9 @@ public:
          size_t mtu)
       : device_(device), samplerate_(samplerate),
         converterFunction_(converterFunction), mtu_(mtu),
-        ringbuffer_(8 * 2048){}; // TODO: make ringbuffer size a function of sample rate=?
+        ringbuffer_(
+            8 *
+            2048){}; // TODO: make ringbuffer size a function of sample rate=?
 
   virtual ~Stream() {
     // Stop streaming if stream is dropped.
@@ -81,12 +84,14 @@ public:
   RingBuffer<airspyhf_complex_float_t> &ringbuffer() { return ringbuffer_; };
   airspyhf_device_t *device() const { return device_; };
   double samplerate() const { return samplerate_; };
+  void setSamplerate(double samplerate) { samplerate_ = samplerate; };
   SoapySDR::ConverterRegistry::ConverterFunction converter() const {
     return converterFunction_;
   };
   size_t MTU() const { return mtu_; };
 };
 
+// SoapyAirspyHF device class
 class SoapyAirspyHF : public SoapySDR::Device {
 private:
   // Device handle
@@ -108,7 +113,7 @@ private:
   std::unique_ptr<SoapySDR::Stream> stream_;
 
 public:
-  SoapyAirspyHF(const SoapySDR::Kwargs &args);
+  explicit SoapyAirspyHF(const SoapySDR::Kwargs &args);
   ~SoapyAirspyHF(void);
 
   SoapyAirspyHF(const SoapyAirspyHF &) = delete;
