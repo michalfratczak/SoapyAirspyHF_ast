@@ -41,6 +41,11 @@
 std::vector<std::string>
 SoapyAirspyHF::getStreamFormats(const int direction,
                                 const size_t channel) const {
+
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "getStreamFormats(%d, %d)", direction,
+                 channel);
+
   if (direction != SOAPY_SDR_RX or channel != 0) {
     SoapySDR::logf(SOAPY_SDR_ERROR,
                    "SoapyAirspyHF::getStreamFormats(%d, %d) invalid channel",
@@ -55,6 +60,10 @@ SoapyAirspyHF::getStreamFormats(const int direction,
 std::string SoapyAirspyHF::getNativeStreamFormat(const int direction,
                                                  const size_t channel,
                                                  double &fullScale) const {
+
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "getNativeStreamFormat(%d, %d)", direction,
+                 channel);
 
   if (direction != SOAPY_SDR_RX or channel != 0) {
     SoapySDR::logf(
@@ -73,6 +82,10 @@ SoapyAirspyHF::getStreamArgsInfo(const int direction,
                                  const size_t channel) const {
 
   SoapySDR::ArgInfoList streamArgs;
+
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "getStreamArgsInfo(%d, %d)", direction,
+                 channel);
 
   if (direction != SOAPY_SDR_RX or channel != 0) {
     SoapySDR::logf(SOAPY_SDR_ERROR,
@@ -165,6 +178,10 @@ SoapyAirspyHF::setupStream(const int direction, const std::string &format,
 }
 
 void SoapyAirspyHF::closeStream(SoapySDR::Stream *stream) {
+
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "closeStream");
+
   // Check that stream is current
   if (stream != stream_.get()) {
     SoapySDR::logf(SOAPY_SDR_ERROR, "closeStream: invalid stream");
@@ -175,6 +192,10 @@ void SoapyAirspyHF::closeStream(SoapySDR::Stream *stream) {
 }
 
 size_t SoapyAirspyHF::getStreamMTU(SoapySDR::Stream *stream) const {
+
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "getStreamMTU");
+
   return stream->MTU();
 }
 
@@ -184,9 +205,13 @@ int SoapyAirspyHF::activateStream(SoapySDR::Stream *stream, const int flags,
 
   int ret = 0;
 
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "activateStream: flags=%d, timeNs=%lld",
+                 flags, timeNs);
+
   // rate limit this log?
   if (flags != 0) {
-    SoapySDR::logf(SOAPY_SDR_DEBUG, "activateStream: flags not supported");
+    SoapySDR::logf(SOAPY_SDR_WARNING, "activateStream: flags not supported");
   }
 
   // Clear buffer
@@ -234,6 +259,10 @@ int SoapyAirspyHF::deactivateStream(SoapySDR::Stream *stream, const int flags,
 int SoapyAirspyHF::readStream(SoapySDR::Stream *stream, void *const *buffs,
                               const size_t numElems, int &flags,
                               long long &timeNs, const long timeoutUs) {
+
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "readStream: numElems=%d, timeoutUs=%ld",
+                 numElems, timeoutUs);
 
   // Flags are not used by this driver
   flags = 0;

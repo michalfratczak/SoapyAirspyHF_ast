@@ -22,11 +22,8 @@ repos:
     rev: v2.3.0
     hooks:
     - id: codespell
-  - repo: https://github.com/pocc/pre-commit-hooks
-    rev: master
+  - repo: https://github.com/cheshirekow/cmake-format-precommit
+    rev: v0.6.10
     hooks:
-      - id: clang-format
-      - id: clang-tidy
-      - id: uncrustify
-      - id: cppcheck
-      - id: include-what-you-use
+    - id: cmake-format
+    - id: cmake-lint

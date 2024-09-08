@@ -34,6 +34,9 @@ findAirspyHF(const SoapySDR::Kwargs &args) {
 
   (void)args; // unused (for now)
 
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "findAirspyHF");
+
   std::vector<SoapySDR::Kwargs> results;
 
   airspyhf_lib_version_t asVersion;
@@ -47,7 +50,7 @@ findAirspyHF(const SoapySDR::Kwargs &args) {
 
   const int count = airspyhf_list_devices(serials, MAX_DEVICES);
   if (count == AIRSPYHF_ERROR) {
-    SoapySDR_logf(SOAPY_SDR_ERROR, "libairspyhf error listing devices");
+    SoapySDR::logf(SOAPY_SDR_ERROR, "libairspyhf error listing devices");
     return results;
   }
 
@@ -60,23 +63,19 @@ findAirspyHF(const SoapySDR::Kwargs &args) {
     soapyInfo["serial"] = fmt::format("{:016x}", serials[i]);
     soapyInfo["label"] = fmt::format("AirSpy HF+ [{}]", soapyInfo["serial"]);
 
-    SoapySDR_logf(SOAPY_SDR_DEBUG, "Found device %s",
-                  soapyInfo.at("label").c_str());
-
-    // if (args.count("serial") != 0) {
-    //   if (args.at("serial") != soapyInfo.at("serial")) {
-    //     continue;
-    //   }
-    //   SoapySDR::logf(SOAPY_SDR_DEBUG, "Found device by serial %s",
-    //                  soapyInfo.at("serial").c_str());
-    // }
+    SoapySDR::logf(SOAPY_SDR_DEBUG, "Found device %s",
+                   soapyInfo.at("label").c_str());
 
     results.push_back(soapyInfo);
   }
+
   return results;
 }
 
 static SoapySDR::Device *makeAirspyHF(const SoapySDR::Kwargs &args) {
+  // Log debug
+  SoapySDR::logf(SOAPY_SDR_DEBUG, "makeAirspyHF");
+
   return new SoapyAirspyHF(args);
 }
 

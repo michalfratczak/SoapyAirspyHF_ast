@@ -1,8 +1,8 @@
-# Soapy SDR plugin for AirspyHF+
+* Soapy SDR plugin for AirspyHF+
 
-## This branch (v2)
+** This branch (v2)
 
-**This branch is work in progress**.
+*This branch is work in progress*.
 
 The code is significantly simpler than the previous version and most
 likely it has better performance. Quite a few bugs have been fixed,
@@ -11,27 +11,39 @@ them! :-)
 
 I have tested this with GQRX and OpenWebRX with good results.
 
-## Building
+** Building
 
-Make sure you have SoapySDR and libfmt-dev installed.
+Make sure you have SoapySDR and =libfmt-dev= installed.
 
 To build and also create `compile_commands.json`:
 
-    cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
-    make
-    sudo make install
+#+begin_src bash
+  mkdir build
+  cd build
+  cmake ..
+  make
+  sudo make install
+#+end_src
 
-## Using
+You can get a lot of *debug* information by setting:
+
+#+begin_src bash
+  export SOAPY_SDR_LOG_LEVEL=7
+  # Before you start i.e gqrz
+  gqrx
+#+end_src
+
+** Using
 
 Use this Device string in GQRX:
 
-    soapy=0,driver=airspyhf
+=soapy=0,driver=airspyhf=
 
-## Code style
+** Code style
 
 Code style is llvm. There's a `.clang-format` file checked in.
 
-## Testing
+** Testing
 
 I mostly test with GQRX. Please report if you use it with other SDR
 software.
@@ -42,26 +54,26 @@ Tested with this version of SoapySDR:
     API Version: v0.8.200
     ABI Version: v0.8-3
 
-## TODO
+** TODO
 
-* More testing.
-* More linting.
-* CI/CD.
+- More testing.
+- More linting.
+- CI/CD.
 
-## Support me
+** Support me
 
 Please consider sponsoring me on GitHub if you enjoy this
 work. Everything I earn through donations will go to families and
 children of Ukraine who have lost their homes because of the war.
 
-## Dependencies
+** Dependencies
 
-* SoapySDR - https://github.com/pothosware/SoapySDR/wiki
-* libairspyhf - https://github.com/airspy/airspyhf
+- libairspyhf - https://github.com/airspy/airspyhf
+- SoapySDR - https://github.com/pothosware/SoapySDR/wiki
 
-## Documentation
+** Documentation
 
-* https://github.com/pothosware/SoapyAirspyHF/wiki
+- https://github.com/pothosware/SoapyAirspyHF/wiki
 
 Turning AGC on/off, LNA and RF gain settings requires firmware R1.3 or
 later and airspyhf 1.1.2 or later.
